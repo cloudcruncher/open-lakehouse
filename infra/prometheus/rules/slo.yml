@@ -1,0 +1,101 @@
+# SLOs as code (see docs/scale.md). Recording rules compute SLIs; alerts use
+# multi-window, multi-burn-rate (Google SRE workbook): page on a fast burn that is
+# still happening, ticket on a slow one. "denied" is policy working, never an error.
+groups:
+  - name: sli-recording
+    interval: 30s
+    rules:
+      - record: sli:mcp_tool_errors:ratio_rate5m
+        expr: sum(rate(mcp_tool_calls_total{outcome=~"unavailable|error"}[5m])) / clamp_min(sum(rate(mcp_tool_calls_total[5m])), 1e-9)
+      - record: sli:mcp_tool_errors:ratio_rate30m
+        expr: sum(rate(mcp_tool_calls_total{outcome=~"unavailable|error"}[30m])) / clamp_min(sum(rate(mcp_tool_calls_total[30m])), 1e-9)
+      - record: sli:mcp_tool_errors:ratio_rate1h
+        expr: sum(rate(mcp_tool_calls_total{outcome=~"unavailable|error"}[1h])) / clamp_min(sum(rate(mcp_tool_calls_total[1h])), 1e-9)
+      - record: sli:mcp_tool_errors:ratio_rate6h
+        expr: sum(rate(mcp_tool_calls_total{outcome=~"unavailable|error"}[6h])) / clamp_min(sum(rate(mcp_tool_calls_total[6h])), 1e-9)
+      - record: sli:mcp_tool_latency:p95_5m
+        expr: histogram_quantile(0.95, sum by (le) (rate(mcp_tool_call_duration_seconds_bucket[5m])))
+      - record: sli:mcp_tool_latency:p99_5m
+        expr: histogram_quantile(0.99, sum by (le) (rate(mcp_tool_call_duration_seconds_bucket[5m])))
+      - record: sli:assist_guidance_latency:p95_5m
+        expr: histogram_quantile(0.95, sum by (le) (rate(assist_guidance_latency_seconds_bucket[5m])))
+
+  - name: slo-alerts
+    rules:
+      - alert: AgentToolAvailabilityFastBurn
+        # 99.9% SLO: 14.4x burn exhausts 2% of the monthly budget in 1h.
+        expr: sli:mcp_tool_errors:ratio_rate1h > (14.4 * 0.001) and sli:mcp_tool_errors:ratio_rate5m > (14.4 * 0.001)
+        for: 2m
+        labels: { severity: page, slo: agent-availability }
+        annotations:
+          summary: Agent tool calls are failing fast enough to burn the monthly error budget in ~2 days
+          runbook: docs/runbooks.md#agent-tool-availability
+      - alert: AgentToolAvailabilitySlowBurn
+        expr: sli:mcp_tool_errors:ratio_rate6h > (6 * 0.001) and sli:mcp_tool_errors:ratio_rate30m > (6 * 0.001)
+        for: 15m
+        labels: { severity: ticket, slo: agent-availability }
+        annotations:
+          summary: Sustained agent tool errors (slow error-budget burn)
+          runbook: docs/runbooks.md#agent-tool-availability
+      - alert: AgentToolLatencyP99High
+        expr: sli:mcp_tool_latency:p99_5m > 1.5
+        for: 10m
+        labels: { severity: ticket, slo: agent-latency }
+        annotations: { summary: "Agent tool p99 latency above 1.5s SLO", runbook: docs/runbooks.md#agent-tool-latency }
+      - alert: TrinoCircuitBreakerOpen
+        expr: max(mcp_circuit_breaker_open) == 1
+        for: 1m
+        labels: { severity: page }
+        annotations: { summary: "Gateway is shedding load: Trino circuit breaker open", runbook: docs/runbooks.md#circuit-breaker-open }
+
+  - name: streaming
+    rules:
+      - alert: CDCFreshnessBudgetBreached
+        expr: max(cdc_end_to_end_lag_seconds) > 60
+        for: 5m
+        labels: { severity: page, slo: freshness }
+        annotations: { summary: "Source-to-silver freshness above the 60s SLO", runbook: docs/runbooks.md#cdc-freshness }
+      - alert: CDCStreamStalled
+        expr: time() - max(cdc_last_progress_timestamp_seconds) > 120
+        for: 1m
+        labels: { severity: page }
+        annotations: { summary: "CDC stream has made no progress for 2 minutes", runbook: docs/runbooks.md#cdc-stalled }
+      - alert: CDCQuarantineRateHigh
+        expr: max by (entity) (cdc_quarantine_rate) > 0.01
+        for: 10m
+        labels: { severity: ticket }
+        annotations: { summary: "More than 1% of {{ $labels.entity }} changes violate the contract (upstream incident?)", runbook: docs/runbooks.md#quarantine }
+      - alert: ReplicationSlotInactive
+        expr: max by (slot_name) (pg_replication_slots_slot_is_active) == 0
+        for: 10m
+        labels: { severity: page }
+        annotations: { summary: "Replication slot {{ $labels.slot_name }} has no consumer: the source is retaining WAL", runbook: docs/runbooks.md#replication-slot }
+      - alert: TranscriptConsumerLagging
+        expr: sum(kafka_consumergroup_lag{consumergroup="call-assist"}) > 50
+        for: 2m
+        labels: { severity: page }
+        annotations: { summary: "Live Call Assist is behind the live transcript stream", runbook: docs/runbooks.md#assist-lag }
+
+  - name: live-call-assist
+    rules:
+      - alert: AssistGuidanceSlow
+        expr: sli:assist_guidance_latency:p95_5m > 2
+        for: 10m
+        labels: { severity: ticket }
+        annotations: { summary: "Guidance p95 above 2s after the caller speaks" }
+      - alert: AssistUngroundedCardWithheld
+        expr: increase(assist_cards_withheld_total[15m]) > 0
+        labels: { severity: ticket }
+        annotations: { summary: "The grounding guardrail withheld a card: check for a template or model regression" }
+
+  - name: platform
+    rules:
+      - alert: TargetDown
+        expr: up == 0
+        for: 2m
+        labels: { severity: page }
+        annotations: { summary: "{{ $labels.job }} is down (the healer should restart it; page if it doesn't)" }
+      - alert: TrinoInternalFailures
+        expr: increase(trino_execution_name_QueryManager_InternalFailures[10m]) > 0
+        labels: { severity: ticket }
+        annotations: { summary: "Trino internal query failures (not user errors)" }

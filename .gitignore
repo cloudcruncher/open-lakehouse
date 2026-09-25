@@ -1,0 +1,22 @@
+# Secrets and generated credentials — never commit
+.env
+.secrets/
+*.pem
+*.key
+*.p12
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+.chaos-healer.log
+*.sarif
+state.txt
+logs.txt

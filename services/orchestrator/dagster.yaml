@@ -1,0 +1,44 @@
+# Shared by webserver, daemon and code server. State lives in Postgres, so any of
+# them can restart (or scale) without losing run history, schedules or sensors.
+storage:
+  postgres:
+    postgres_db:
+      hostname: postgres
+      port: 5432
+      db_name: dagster
+      username: dagster
+      password: { env: DAGSTER_DB_PASSWORD }
+
+run_coordinator:
+  module: dagster.core.run_coordinator
+  class: QueuedRunCoordinator
+  config:
+    # One Spark job at a time on a laptop. In production: per-pool limits, and
+    # runs launched as Kubernetes jobs (K8sRunLauncher) with their own resources.
+    max_concurrent_runs: 1
+    tag_concurrency_limits:
+      - { key: lakehouse/writer, value: { applyLimitPerUniqueValue: true }, limit: 1 }
+
+# Detect runs whose worker died (OOM, node loss) and fail them, so retries fire.
+run_monitoring:
+  enabled: true
+  start_timeout_seconds: 300
+  max_resume_run_attempts: 0
+  poll_interval_seconds: 30
+
+run_retries:
+  enabled: true
+  max_retries: 0   # per-job opt-in via tags
+
+retention:
+  schedule: { purge_after_days: 30 }
+  sensor: { purge_after_days: { skipped: 7, failure: 30, success: 7 } }
+
+# Step logs on a volume shared by the code server (writes) and the webserver (reads).
+compute_logs:
+  module: dagster.core.storage.local_compute_log_manager
+  class: LocalComputeLogManager
+  config: { base_dir: /opt/dagster/logs }
+
+telemetry:
+  enabled: false

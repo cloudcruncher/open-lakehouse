@@ -1,0 +1,6 @@
+# Dagster control plane (webserver + daemon). Pipeline code runs in the code server
+# (Spark image); these processes only talk to it over gRPC, so their Python can differ.
+dagster==1.13.24
+dagster-webserver==1.13.24
+dagster-postgres==0.29.24
+sqlalchemy>=2.0,<2.1  # 2.1 defaults postgresql:// to psycopg3; dagster-postgres needs psycopg2 semantics (NOTIFY)

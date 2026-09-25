@@ -1,0 +1,105 @@
+{
+  "entitlements": {
+    "_comment": "In production this document is generated from the IdP (group membership) and the data catalog (column tags) and shipped to OPA as a signed bundle. Nothing here is hand-edited per request.",
+    "users": {
+      "alice": {
+        "persona": "contact_centre",
+        "brands": [
+          "Meridian"
+        ]
+      },
+      "bob": {
+        "persona": "complaints_investigator",
+        "brands": [
+          "Meridian",
+          "Northgate"
+        ]
+      },
+      "carol": {
+        "persona": "analyst",
+        "brands": [
+          "Meridian",
+          "Northgate",
+          "Isle"
+        ]
+      },
+      "ops_admin": {
+        "persona": "platform_admin",
+        "brands": [
+          "*"
+        ]
+      }
+    },
+    "personas": {
+      "contact_centre": {
+        "schemas": [
+          "gold",
+          "silver"
+        ],
+        "pii": "partial",
+        "special_category": true
+      },
+      "complaints_investigator": {
+        "schemas": [
+          "gold",
+          "silver"
+        ],
+        "pii": "full",
+        "special_category": true
+      },
+      "analyst": {
+        "schemas": [
+          "gold"
+        ],
+        "pii": "none",
+        "special_category": false
+      },
+      "platform_admin": {
+        "schemas": [
+          "silver",
+          "gold",
+          "ops"
+        ],
+        "pii": "none",
+        "special_category": false,
+        "admin": true
+      }
+    },
+    "column_tags": {
+      "silver.customers": {
+        "first_name": "pii.name",
+        "last_name": "pii.name",
+        "date_of_birth": "pii.dob",
+        "email": "pii.contact",
+        "phone": "pii.contact",
+        "postcode": "pii.location",
+        "vulnerability_flag": "special_category"
+      },
+      "silver.accounts": {
+        "iban": "pii.financial_id"
+      },
+      "gold.customer_360": {
+        "first_name": "pii.name",
+        "last_name": "pii.name",
+        "date_of_birth": "pii.dob",
+        "email": "pii.contact",
+        "phone": "pii.contact",
+        "postcode": "pii.location",
+        "vulnerability_flag": "special_category"
+      }
+    },
+    "brand_scoped_tables": [
+      "silver.customers",
+      "silver.accounts",
+      "silver.transactions",
+      "silver.complaints",
+      "gold.customer_360"
+    ],
+    "machines": {
+      "service-account-prometheus": {
+        "purpose": "metrics scraping",
+        "read_system_information": true
+      }
+    }
+  }
+}

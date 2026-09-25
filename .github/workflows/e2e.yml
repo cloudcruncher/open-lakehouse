@@ -1,0 +1,56 @@
+# The whole platform, from zero, on a clean runner: build, seed, batch + streaming
+# pipelines, then every end-to-end assertion (`make verify`) and a chaos sample.
+# If this is green, the README's claims are true on a machine that isn't mine.
+name: e2e
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 1"   # weekly: catch upstream image or dependency drift
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  platform:
+    runs-on: ubuntu-latest   # public repos: 4 vCPU, 16 GB
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "**/uv.lock"
+      - name: Make room for the images
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
+          df -h / && free -g
+      - name: Platform from zero -> seed -> pipelines -> verify
+        run: make demo
+      - name: Chaos sample (policy, storage, stream)
+        run: scripts/chaos.sh opa rustfs cdc-stream
+      - name: Verify again after chaos
+        run: make verify
+      - name: Collect state on failure
+        if: failure()
+        run: |
+          docker compose --profile streaming --profile ops ps -a > state.txt
+          docker compose --profile streaming --profile ops logs --no-color --tail=300 > logs.txt 2>&1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: e2e-diagnostics
+          path: |
+            state.txt
+            logs.txt
+            .chaos-healer.log
+          retention-days: 7

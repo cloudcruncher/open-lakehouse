@@ -1,0 +1,36 @@
+# Marquez (OpenLineage reference backend). Lineage events arrive from every Spark job
+# and the CDC stream via the OpenLineage Spark listener. Search (OpenSearch) is off to
+# keep the footprint small; the graph and dataset views don't need it.
+server:
+  applicationConnectors:
+    - type: http
+      port: 5000
+      httpCompliance: RFC7230_LEGACY
+  adminConnectors:
+    - type: http
+      port: 5001
+
+db:
+  driverClass: org.postgresql.Driver
+  url: jdbc:postgresql://postgres:5432/marquez
+  user: marquez
+  password: ${MARQUEZ_DB_PASSWORD}
+
+migrateOnStartup: true
+
+graphql:
+  enabled: true
+
+search:
+  enabled: false
+
+logging:
+  level: WARN
+  appenders:
+    - type: console
+
+tags:
+  - name: PII
+    description: Personally identifiable information (masked by policy for most personas)
+  - name: SPECIAL_CATEGORY
+    description: Vulnerability and other special-category data

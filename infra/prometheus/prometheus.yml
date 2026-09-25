@@ -1,0 +1,53 @@
+# Prometheus scrapes every tier. It joins each network segment it scrapes (it doesn't
+# route between them), so adding observability never creates a data path that
+# segmentation forbids. Production: Prometheus Agent / OTel Collector remote-writing
+# to a managed TSDB (Mimir, AMP), alerts routed by Alertmanager to on-call.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels: { platform: open-lakehouse, env: local }
+
+rule_files: [/etc/prometheus/rules/*.yml]
+
+scrape_configs:
+  - job_name: mcp-gateway
+    static_configs: [{ targets: ["mcp-gateway:8000"] }]
+
+  - job_name: call-assist
+    static_configs: [{ targets: ["call-assist:8090"] }]
+
+  - job_name: cdc-stream
+    static_configs: [{ targets: ["cdc-stream:9108"] }]
+
+  - job_name: trino
+    # Trino's metrics are a management resource: TLS, a JWT from the IdP (client
+    # credentials, machine identity), and an OPA rule that lets this identity read
+    # system information only. It can't run a single query.
+    scheme: https
+    tls_config: { ca_file: /etc/prometheus/ca.pem }
+    oauth2:
+      client_id: prometheus
+      client_secret_file: /etc/prometheus/secrets/prometheus_client_secret
+      token_url: http://keycloak:8080/realms/bank/protocol/openid-connect/token
+    metric_relabel_configs:
+      # Keep the signal, drop the long tail of JMX beans (cardinality is a cost).
+      - source_labels: [__name__]
+        regex: "trino_(execution_name_QueryManager|memory|failuredetector|execution_executor_name_TaskExecutor|metadata|plugin_iceberg|filesystem).*|jvm_.*|process_.*|up"
+        action: keep
+    static_configs: [{ targets: ["trino:8443"] }]
+
+  - job_name: polaris
+    metrics_path: /q/metrics
+    static_configs: [{ targets: ["polaris:8182"] }]
+
+  - job_name: keycloak
+    static_configs: [{ targets: ["keycloak:9000"] }]
+
+  - job_name: postgres
+    static_configs: [{ targets: ["postgres-exporter:9187"] }]
+
+  - job_name: kafka
+    static_configs: [{ targets: ["kafka-exporter:9308"] }]
+
+  - job_name: prometheus
+    static_configs: [{ targets: ["localhost:9090"] }]

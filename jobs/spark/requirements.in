@@ -1,0 +1,7 @@
+# Python dependencies for the pipeline driver processes and the Dagster code server
+# (both run on this image's Python 3.10, next to Spark).
+dagster==1.13.24
+dagster-postgres==0.29.24
+dagster-pipes==1.13.24
+prometheus-client==0.26.0
+sqlalchemy>=2.0,<2.1  # 2.1 defaults postgresql:// to psycopg3; dagster-postgres needs psycopg2 semantics (NOTIFY)

@@ -1,0 +1,7 @@
+# The control plane loads pipeline code over gRPC from a separately deployed code
+# server, so pipeline changes redeploy without restarting the UI or the daemon.
+load_from:
+  - grpc_server:
+      host: dagster-code
+      port: 4000
+      location_name: lakehouse

@@ -1,0 +1,782 @@
+# Open Lakehouse — local, production-shaped deployment.
+#
+# Every long-running service has a healthcheck, a restart policy, a memory cap and
+# log rotation. One-shot init jobs are idempotent, so `make up` is always safe to
+# re-run. Networks are segmented: the agent gateway (mcp-gateway) cannot reach
+# object storage or the catalog at all; its only path to data is through Trino,
+# where identity and policy are enforced.
+#
+# Profiles:  (default) platform  |  jobs      -> Spark pipelines, seeding
+#            streaming -> Kafka, Debezium CDC, the CDC stream, Live Call Assist
+#            ops       -> Dagster, Prometheus, Grafana, Marquez (lineage)
+
+name: open-lakehouse
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+x-service: &service
+  restart: unless-stopped
+  logging: *logging
+  security_opt: ["no-new-privileges:true"]
+
+networks:
+  data:   # object storage + catalog + engines
+  meta:   # Postgres (catalog metadata, IdP, source system, audit)
+  edge:   # identity, policy, query serving, agent gateway
+  stream: # Kafka, CDC, streaming consumers
+  obs:    # dashboards <-> metrics store (Prometheus joins each segment it scrapes)
+
+volumes:
+  pg-data:
+  object-data:
+  platform-secrets:
+  spark-ivy:
+  kafka-data:
+  cdc-checkpoints:
+  prometheus-data:
+  grafana-data:
+  dagster-logs:
+
+services:
+  # ---------------------------------------------------------------- metadata DB
+  postgres:
+    <<: *service
+    image: postgres:17
+    networks: [meta]
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_connections=200",
+              "-c", "shared_buffers=128MB", "-c", "log_min_duration_statement=2000",
+              # A replication slot with no consumer pins WAL forever; cap it so a dead
+              # CDC pipeline can never fill the source database's disk.
+              "-c", "max_slot_wal_keep_size=2GB"]
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run make secrets}
+      POLARIS_DB_PASSWORD: ${POLARIS_DB_PASSWORD:?}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?}
+      COREBANK_DB_PASSWORD: ${COREBANK_DB_PASSWORD:?}
+      COREBANK_READER_PASSWORD: ${COREBANK_READER_PASSWORD:?}
+      AUDIT_WRITER_PASSWORD: ${AUDIT_WRITER_PASSWORD:?}
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d audit"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 512m
+
+  db-migrate:
+    image: postgres:17
+    restart: "no"
+    logging: *logging
+    networks: [meta]
+    depends_on: { postgres: { condition: service_healthy } }
+    environment:
+      PGHOST: postgres
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      DEBEZIUM_DB_PASSWORD: ${DEBEZIUM_DB_PASSWORD:?run make secrets}
+      MARQUEZ_DB_PASSWORD: ${MARQUEZ_DB_PASSWORD:?}
+      DAGSTER_DB_PASSWORD: ${DAGSTER_DB_PASSWORD:?}
+      MONITORING_DB_PASSWORD: ${MONITORING_DB_PASSWORD:?}
+    volumes: [./infra/postgres/reconcile.sql:/reconcile.sql:ro]
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        psql -q -d postgres -v debezium_password="$$DEBEZIUM_DB_PASSWORD"
+        -v marquez_password="$$MARQUEZ_DB_PASSWORD" -v dagster_password="$$DAGSTER_DB_PASSWORD"
+        -v monitoring_password="$$MONITORING_DB_PASSWORD"
+        -f /reconcile.sql && echo "database reconciled"
+
+  # ------------------------------------------------------------ object storage
+  rustfs:
+    <<: *service
+    image: rustfs/rustfs:1.0.0
+    networks: [data]
+    environment:
+      RUSTFS_ACCESS_KEY: ${STORAGE_ROOT_USER:?}
+      RUSTFS_SECRET_KEY: ${STORAGE_ROOT_PASSWORD:?}
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: ":9000"
+      RUSTFS_CONSOLE_ENABLE: "true"
+      RUSTFS_CONSOLE_ADDRESS: ":9001"
+    ports: ["127.0.0.1:9001:9001"]   # console, loopback only
+    volumes: [object-data:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    mem_limit: 512m
+
+  storage-init:
+    image: amazon/aws-cli:2.36.8
+    restart: "no"
+    logging: *logging
+    networks: [data]
+    depends_on: { rustfs: { condition: service_healthy } }
+    environment:
+      AWS_ACCESS_KEY_ID: ${STORAGE_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${STORAGE_ROOT_PASSWORD}
+      AWS_ENDPOINT_URL: http://rustfs:9000
+      AWS_REGION: us-east-1
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        aws s3api head-bucket --bucket lakehouse 2>/dev/null
+        || aws s3api create-bucket --bucket lakehouse;
+        aws s3api head-bucket --bucket lakehouse && echo "bucket ready"
+
+  # --------------------------------------------------------- catalog (Polaris)
+  polaris-bootstrap:
+    image: apache/polaris-admin-tool:1.7.0
+    restart: "no"
+    logging: *logging
+    networks: [meta]
+    depends_on: { postgres: { condition: service_healthy } }
+    environment:
+      POLARIS_PERSISTENCE_TYPE: relational-jdbc
+      POLARIS_PERSISTENCE_RELATIONAL_JDBC_DATABASE_TYPE: postgresql
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/polaris
+      QUARKUS_DATASOURCE_USERNAME: polaris
+      QUARKUS_DATASOURCE_PASSWORD: ${POLARIS_DB_PASSWORD}
+      POLARIS_ROOT_CLIENT_SECRET: ${POLARIS_ROOT_CLIENT_SECRET:?}
+    # The root secret goes through a private file, never argv: the image's launcher
+    # echoes its full command line into the logs.
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >-
+        umask 077 &&
+        printf 'bank:\n  client-id: root\n  client-secret: %s\n' "$$POLARIS_ROOT_CLIENT_SECRET" > /tmp/root.yaml &&
+        exec /opt/jboss/container/java/run/run-java.sh bootstrap --credentials-file=/tmp/root.yaml
+
+  polaris:
+    <<: *service
+    image: apache/polaris:1.7.0
+    networks: [data, meta]
+    depends_on:
+      postgres: { condition: service_healthy }
+      polaris-bootstrap: { condition: service_completed_successfully }
+      storage-init: { condition: service_completed_successfully }
+    environment:
+      POLARIS_PERSISTENCE_TYPE: relational-jdbc
+      POLARIS_PERSISTENCE_RELATIONAL_JDBC_DATABASE_TYPE: postgresql
+      POLARIS_PERSISTENCE_RELATIONAL_JDBC_MAX_RETRIES: "5"
+      QUARKUS_DATASOURCE_JDBC_URL: jdbc:postgresql://postgres:5432/polaris
+      QUARKUS_DATASOURCE_USERNAME: polaris
+      QUARKUS_DATASOURCE_PASSWORD: ${POLARIS_DB_PASSWORD}
+      POLARIS_REALM_CONTEXT_REALMS: bank
+      # Shared signing key: any replica can validate tokens issued by any other,
+      # which is what makes Polaris horizontally scalable and restart-safe.
+      POLARIS_AUTHENTICATION_TOKEN_BROKER_TYPE: symmetric-key
+      POLARIS_AUTHENTICATION_TOKEN_BROKER_SYMMETRIC_KEY_SECRET: ${POLARIS_TOKEN_KEY:?}
+      # Identity Polaris uses to mint scoped, short-lived STS credentials.
+      # On AWS this is the pod's IAM role (IRSA), never a static key.
+      AWS_ACCESS_KEY_ID: ${STORAGE_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${STORAGE_ROOT_PASSWORD}
+      AWS_REGION: us-east-1
+      QUARKUS_OTEL_SDK_DISABLED: "true"
+      JAVA_OPTS_APPEND: "-XX:MaxRAMPercentage=70"
+    ports: ["127.0.0.1:8181:8181"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8182/q/health/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    mem_limit: 1g
+
+  polaris-init:
+    build: ./services/platform
+    image: open-lakehouse/platform:dev
+    restart: "no"
+    logging: *logging
+    networks: [data]
+    depends_on: { polaris: { condition: service_healthy } }
+    environment:
+      POLARIS_ROOT_CLIENT_SECRET: ${POLARIS_ROOT_CLIENT_SECRET}
+    user: "0"   # writes into the shared secrets volume, then chowns for readers
+    volumes: [platform-secrets:/run/platform-secrets]
+    entrypoint: ["/bin/sh", "-c", "polaris-bootstrap && chmod 0644 /run/platform-secrets/*.env"]
+
+  # ------------------------------------------------------------ identity (IdP)
+  keycloak:
+    <<: *service
+    image: quay.io/keycloak/keycloak:26.7.4
+    networks: [meta, edge]
+    depends_on: { postgres: { condition: service_healthy } }
+    command: ["start", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD}
+      # Stable issuer for every token, whichever network the request came from.
+      KC_HOSTNAME: http://localhost:8280
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_HTTP_ENABLED: "true"          # TLS terminates at the ingress in production
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:?}
+      MCP_GATEWAY_CLIENT_SECRET: ${MCP_GATEWAY_CLIENT_SECRET:?}
+      GRAFANA_CLIENT_SECRET: ${GRAFANA_CLIENT_SECRET:?}
+      PROMETHEUS_CLIENT_SECRET: ${PROMETHEUS_CLIENT_SECRET:?}
+      DAGSTER_UI_CLIENT_SECRET: ${DAGSTER_UI_CLIENT_SECRET:?}
+      LINEAGE_UI_CLIENT_SECRET: ${LINEAGE_UI_CLIENT_SECRET:?}
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:?}
+      JAVA_OPTS_KC_HEAP: "-XX:MaxRAMPercentage=65"
+    volumes:
+      - ./infra/keycloak/bank-realm.json:/opt/keycloak/data/import/bank-realm.json:ro
+    ports: ["127.0.0.1:8280:8080"]
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/localhost/9000 && printf 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -q '200 OK' <&3"]
+      interval: 5s
+      timeout: 3s
+      retries: 40
+      start_period: 30s
+    mem_limit: 1g
+
+  keycloak-reconcile:
+    image: open-lakehouse/platform:dev
+    build: ./services/platform
+    restart: "no"
+    logging: *logging
+    networks: [edge]
+    depends_on: { keycloak: { condition: service_healthy } }
+    environment:
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+      MCP_GATEWAY_CLIENT_SECRET: ${MCP_GATEWAY_CLIENT_SECRET}
+      GRAFANA_CLIENT_SECRET: ${GRAFANA_CLIENT_SECRET}
+      PROMETHEUS_CLIENT_SECRET: ${PROMETHEUS_CLIENT_SECRET}
+      DAGSTER_UI_CLIENT_SECRET: ${DAGSTER_UI_CLIENT_SECRET:?}
+      LINEAGE_UI_CLIENT_SECRET: ${LINEAGE_UI_CLIENT_SECRET:?}
+      DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD}
+    volumes: [./infra/keycloak/bank-realm.json:/etc/keycloak/bank-realm.json:ro]
+    entrypoint: ["keycloak-reconcile"]
+
+  # ------------------------------------------------------------ policy (OPA)
+  opa:
+    <<: *service
+    image: openpolicyagent/opa:1.21.0-static
+    networks: [edge]
+    command: ["run", "--server", "--addr=0.0.0.0:8181", "--watch",
+              "--set=decision_logs.console=true", "/policies", "/data"]
+    volumes:
+      - ./infra/opa/policies:/policies:ro
+      - ./infra/opa/data:/data:ro
+    mem_limit: 256m
+
+  # --------------------------------------------------------- query engine
+  trino:
+    <<: *service
+    image: trinodb/trino:483
+    networks: [data, edge]
+    depends_on:
+      polaris-init: { condition: service_completed_successfully }
+      keycloak-reconcile: { condition: service_completed_successfully }
+      opa: { condition: service_started }
+    entrypoint: ["/bin/bash", "-c",
+                 "set -a && . /run/platform-secrets/trino_query_engine.env && set +a && exec /usr/lib/trino/bin/run-trino"]
+    environment:
+      TRINO_SHARED_SECRET: ${TRINO_SHARED_SECRET:?}
+    volumes:
+      - ./infra/trino/etc/config.properties:/etc/trino/config.properties:ro
+      - ./infra/trino/etc/access-control.properties:/etc/trino/access-control.properties:ro
+      - ./infra/trino/etc/catalog:/etc/trino/catalog:ro
+      - ./.secrets/trino.pem:/etc/trino/tls/trino.pem:ro
+      - platform-secrets:/run/platform-secrets:ro
+    ports: ["127.0.0.1:8443:8443"]
+    healthcheck:
+      test: ["CMD", "/usr/lib/trino/bin/health-check"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    mem_limit: 2560m
+
+  # --------------------------------------------------- jobs (profile: jobs)
+  seed-corebank:
+    profiles: [jobs]
+    image: open-lakehouse/platform:dev
+    build: ./services/platform
+    restart: "no"
+    logging: *logging
+    networks: [meta]
+    depends_on: { postgres: { condition: service_healthy } }
+    environment:
+      COREBANK_DB_PASSWORD: ${COREBANK_DB_PASSWORD}
+    entrypoint: ["seed-corebank"]
+
+  spark-job:
+    profiles: [jobs]
+    build: ./jobs/spark
+    image: open-lakehouse/spark:dev
+    restart: "no"
+    logging: *logging
+    networks: [data, meta]
+    depends_on: { polaris: { condition: service_healthy } }
+    environment:
+      COREBANK_READER_PASSWORD: ${COREBANK_READER_PASSWORD}
+      AWS_REGION: us-east-1
+      SPARK_DRIVER_MEMORY: 2g
+      OPENLINEAGE_URL: http://marquez:5000
+    volumes: [platform-secrets:/run/platform-secrets:ro]
+    mem_limit: 3g
+
+  # ------------------------------------------------------ agent gateway (MCP)
+  mcp-gateway:
+    <<: *service
+    image: open-lakehouse/platform:dev
+    build: ./services/platform
+    # meta: audit DB only. Deliberately NOT on the data network: no route to storage or catalog.
+    networks: [edge, meta]
+    depends_on:
+      trino: { condition: service_healthy }
+      keycloak: { condition: service_healthy }
+    entrypoint: ["mcp-gateway"]
+    environment:
+      MCP_GATEWAY_CLIENT_SECRET: ${MCP_GATEWAY_CLIENT_SECRET}
+      AUDIT_WRITER_PASSWORD: ${AUDIT_WRITER_PASSWORD}
+      TRINO_CA_FILE: /etc/ssl/lakehouse/ca.pem
+    volumes:
+      - ./.secrets/ca.pem:/etc/ssl/lakehouse/ca.pem:ro
+    ports: ["127.0.0.1:8000:8000"]
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/readyz', timeout=3).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    mem_limit: 384m
+
+  # ============================================= streaming (profile: streaming)
+  kafka:
+    <<: *service
+    profiles: [streaming]
+    image: apache/kafka:4.3.1
+    networks: [stream]
+    environment:
+      # Single KRaft node (no ZooKeeper). Production: 3 controllers + N brokers across
+      # AZs, RF=3, min.insync.replicas=2, SASL/mTLS listeners with ACLs.
+      CLUSTER_ID: open-lakehouse-kraft01
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Topics are declared (kafka-init, connector config), never created by a typo.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: "-Xms384m -Xmx384m"
+    volumes: [kafka-data:/var/lib/kafka/data]
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 15s
+    mem_limit: 768m
+
+  kafka-init:
+    profiles: [streaming]
+    image: apache/kafka:4.3.1
+    restart: "no"
+    logging: *logging
+    networks: [stream]
+    depends_on: { kafka: { condition: service_healthy } }
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >-
+        for t in contact-centre.transcripts:6 contact-centre.assist-events:6 corebank.core.customers:3
+        corebank.core.accounts:3 corebank.core.transactions:3 corebank.core.complaints:3; do
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists
+        --topic "$${t%%:*}" --partitions "$${t##*:}" --replication-factor 1
+        --config retention.ms=604800000 || exit 1;
+        done; echo "topics ready"
+
+  cdc-connect:
+    <<: *service
+    profiles: [streaming]
+    image: quay.io/debezium/connect:3.6.3.Final
+    # stream: publishes to Kafka. meta: reads the source's WAL. Nothing else.
+    networks: [stream, meta]
+    depends_on:
+      kafka: { condition: service_healthy }
+      db-migrate: { condition: service_completed_successfully }
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: cdc-connect
+      CONFIG_STORAGE_TOPIC: _connect_configs
+      OFFSET_STORAGE_TOPIC: _connect_offsets
+      STATUS_STORAGE_TOPIC: _connect_status
+      CONFIG_STORAGE_REPLICATION_FACTOR: "1"
+      OFFSET_STORAGE_REPLICATION_FACTOR: "1"
+      STATUS_STORAGE_REPLICATION_FACTOR: "1"
+      KEY_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      VALUE_CONVERTER: org.apache.kafka.connect.json.JsonConverter
+      CONNECT_KEY_CONVERTER_SCHEMAS_ENABLE: "false"
+      CONNECT_VALUE_CONVERTER_SCHEMAS_ENABLE: "false"
+      # Connector configs reference ${env:...}; secrets never enter the config topic.
+      CONNECT_CONFIG_PROVIDERS: env
+      CONNECT_CONFIG_PROVIDERS_ENV_CLASS: org.apache.kafka.common.config.provider.EnvVarConfigProvider
+      DEBEZIUM_DB_PASSWORD: ${DEBEZIUM_DB_PASSWORD}
+      HEAP_OPTS: "-Xms256m -Xmx512m"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/connectors >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    mem_limit: 768m
+
+  cdc-init:
+    profiles: [streaming]
+    image: open-lakehouse/platform:dev
+    build: ./services/platform
+    restart: "no"
+    logging: *logging
+    networks: [stream]
+    depends_on: { cdc-connect: { condition: service_healthy } }
+    entrypoint: ["cdc-connector"]
+
+  cdc-stream:
+    <<: *service
+    profiles: [streaming]
+    build: ./jobs/spark
+    image: open-lakehouse/spark:dev
+    networks: [data, stream]
+    depends_on:
+      polaris-init: { condition: service_completed_successfully }
+      kafka-init: { condition: service_completed_successfully }
+    command: ["stream_cdc"]
+    environment:
+      AWS_REGION: us-east-1
+      MAX_ATTEMPTS: "1"            # long-running: the restart policy + healer own restarts
+      SPARK_DRIVER_MEMORY: 1200m
+      SPARK_CORES: "2"
+      SPARK_SHUFFLE_PARTITIONS: "4"
+      OPENLINEAGE_URL: http://marquez:5000
+    volumes:
+      - platform-secrets:/run/platform-secrets:ro
+      - cdc-checkpoints:/checkpoints
+    healthcheck:
+      test: ["CMD", "python3", "/opt/pipelines/healthcheck_stream.py"]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 120s
+    mem_limit: 2g
+
+  # ------------------------------------------ Live Call Assist (profile: streaming)
+  call-sim:
+    <<: *service
+    profiles: [streaming]
+    image: open-lakehouse/platform:dev
+    build: ./services/platform
+    # Stands in for the contact-centre platform: source-system writes (meta) + transcripts (stream).
+    networks: [meta, stream]
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      postgres: { condition: service_healthy }
+    entrypoint: ["call-sim"]
+    environment:
+      COREBANK_DB_PASSWORD: ${COREBANK_DB_PASSWORD}
+      CALL_SIM_SPEED: ${CALL_SIM_SPEED:-1.0}
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8091/healthz', timeout=3).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    mem_limit: 256m
+
+  call-assist:
+    <<: *service
+    profiles: [streaming]
+    image: open-lakehouse/platform:dev
+    build: ./services/platform
+    # edge: identity + the MCP gateway. stream: transcripts in, assist events out.
+    # No database, storage or catalog access: its only path to data is the gateway, as the colleague.
+    networks: [edge, stream]
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      mcp-gateway: { condition: service_healthy }
+      call-sim: { condition: service_healthy }
+    entrypoint: ["call-assist"]
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}   # optional: LLM understanding; rules-only without it
+    ports: ["127.0.0.1:8090:8090"]
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8090/healthz', timeout=3).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    mem_limit: 384m
+
+  kafka-exporter:
+    <<: *service
+    profiles: [streaming]
+    image: danielqsj/kafka-exporter:v1.10.0
+    networks: [stream]
+    depends_on: { kafka: { condition: service_healthy } }
+    command: ["--kafka.server=kafka:9092", "--kafka.version=3.9.0"]
+    mem_limit: 128m
+
+  # ================================================ observability (profile: ops)
+  postgres-exporter:
+    <<: *service
+    profiles: [ops]
+    image: prometheuscommunity/postgres-exporter:v0.20.1
+    networks: [meta]
+    depends_on: { db-migrate: { condition: service_completed_successfully } }
+    environment:
+      DATA_SOURCE_URI: postgres:5432/postgres?sslmode=disable
+      DATA_SOURCE_USER: monitoring
+      DATA_SOURCE_PASS: ${MONITORING_DB_PASSWORD}
+    command: ["--collector.replication_slots"]
+    mem_limit: 128m
+
+  prometheus:
+    <<: *service
+    profiles: [ops]
+    image: prom/prometheus:v3.15.0
+    # Joins each segment it scrapes; it doesn't route between them.
+    networks: [obs, data, meta, edge, stream]
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus",
+              "--storage.tsdb.retention.time=7d", "--web.enable-lifecycle"]
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/rules:/etc/prometheus/rules:ro
+      - ./.secrets/ca.pem:/etc/prometheus/ca.pem:ro
+      - ./.secrets/prometheus_client_secret:/etc/prometheus/secrets/prometheus_client_secret:ro
+      - prometheus-data:/prometheus
+    ports: ["127.0.0.1:9090:9090"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    mem_limit: 512m
+
+  grafana:
+    <<: *service
+    profiles: [ops]
+    image: grafana/grafana:13.0.9
+    networks: [obs, edge]
+    depends_on:
+      prometheus: { condition: service_healthy }
+      keycloak-reconcile: { condition: service_completed_successfully }
+    environment:
+      GF_SERVER_ROOT_URL: http://localhost:3001
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      # Single sign-on with the bank IdP (OIDC + PKCE). ops_admin is a Grafana admin;
+      # every other colleague gets read-only dashboards.
+      GF_AUTH_GENERIC_OAUTH_ENABLED: "true"
+      GF_AUTH_GENERIC_OAUTH_NAME: Bank SSO
+      GF_AUTH_GENERIC_OAUTH_CLIENT_ID: grafana
+      GF_AUTH_GENERIC_OAUTH_CLIENT_SECRET: ${GRAFANA_CLIENT_SECRET}
+      GF_AUTH_GENERIC_OAUTH_SCOPES: openid profile email
+      GF_AUTH_GENERIC_OAUTH_USE_PKCE: "true"
+      GF_AUTH_GENERIC_OAUTH_AUTH_URL: http://localhost:8280/realms/bank/protocol/openid-connect/auth
+      GF_AUTH_GENERIC_OAUTH_TOKEN_URL: http://keycloak:8080/realms/bank/protocol/openid-connect/token
+      GF_AUTH_GENERIC_OAUTH_API_URL: http://keycloak:8080/realms/bank/protocol/openid-connect/userinfo
+      GF_AUTH_GENERIC_OAUTH_LOGIN_ATTRIBUTE_PATH: preferred_username
+      GF_AUTH_GENERIC_OAUTH_ROLE_ATTRIBUTE_PATH: "preferred_username == 'ops_admin' && 'Admin' || 'Viewer'"
+      GF_AUTH_SIGNOUT_REDIRECT_URL: http://localhost:8280/realms/bank/protocol/openid-connect/logout?client_id=grafana&post_logout_redirect_uri=http%3A%2F%2Flocalhost%3A3001%2Flogin
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/platform-slos.json
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports: ["127.0.0.1:3001:3000"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    mem_limit: 384m
+
+  # ============================================ orchestration (profile: ops)
+  dagster-code:
+    <<: *service
+    profiles: [ops]
+    build: ./jobs/spark
+    image: open-lakehouse/spark:dev
+    # The code server is where runs execute (Spark, as the ETL identity), so it gets
+    # the same network access as a Spark job and nothing more.
+    networks: [data, meta]
+    depends_on:
+      polaris-init: { condition: service_completed_successfully }
+      db-migrate: { condition: service_completed_successfully }
+    entrypoint: ["dagster", "code-server", "start", "-h", "0.0.0.0", "-p", "4000",
+                 "-m", "lakehouse_orchestration.definitions"]
+    environment: &dagster-env
+      DAGSTER_HOME: /opt/dagster/home
+      DAGSTER_DB_PASSWORD: ${DAGSTER_DB_PASSWORD}
+      COREBANK_READER_PASSWORD: ${COREBANK_READER_PASSWORD}
+      AWS_REGION: us-east-1
+      SPARK_DRIVER_MEMORY: 2g
+      OPENLINEAGE_URL: http://marquez:5000
+    volumes:
+      - ./services/orchestrator/dagster.yaml:/opt/dagster/home/dagster.yaml:ro
+      - platform-secrets:/run/platform-secrets:ro
+      - dagster-logs:/opt/dagster/logs
+    healthcheck:
+      test: ["CMD", "dagster", "api", "grpc-health-check", "-p", "4000"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 30s
+    mem_limit: 3584m
+
+  dagster-webserver:
+    <<: *service
+    profiles: [ops]
+    build: ./services/orchestrator
+    image: open-lakehouse/orchestrator:dev
+    networks: [meta]
+    depends_on: { dagster-code: { condition: service_healthy } }
+    entrypoint: ["dagster-webserver", "-h", "0.0.0.0", "-p", "3000", "-w", "/opt/dagster/home/workspace.yaml"]
+    environment:
+      DAGSTER_HOME: /opt/dagster/home
+      DAGSTER_DB_PASSWORD: ${DAGSTER_DB_PASSWORD}
+    volumes:
+      - ./services/orchestrator/dagster.yaml:/opt/dagster/home/dagster.yaml:ro
+      - dagster-logs:/opt/dagster/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:3000/server_info', timeout=3).status == 200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    mem_limit: 512m
+
+  dagster-daemon:
+    <<: *service
+    profiles: [ops]
+    image: open-lakehouse/orchestrator:dev
+    networks: [meta]
+    depends_on: { dagster-code: { condition: service_healthy } }
+    entrypoint: ["dagster-daemon", "run", "-w", "/opt/dagster/home/workspace.yaml"]
+    environment:
+      DAGSTER_HOME: /opt/dagster/home
+      DAGSTER_DB_PASSWORD: ${DAGSTER_DB_PASSWORD}
+    volumes:
+      - ./services/orchestrator/dagster.yaml:/opt/dagster/home/dagster.yaml:ro
+    healthcheck:
+      test: ["CMD", "dagster-daemon", "liveness-check"]
+      interval: 30s
+      timeout: 15s
+      retries: 10
+      start_period: 60s
+    mem_limit: 384m
+
+  # Dagster OSS has no login of its own: it sits behind SSO, restricted to platform admins.
+  dagster-ui:
+    <<: *service
+    profiles: [ops]
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.4
+    networks: [meta, edge]
+    depends_on:
+      dagster-webserver: { condition: service_healthy }
+      keycloak-reconcile: { condition: service_completed_successfully }
+    command: &oauth2-proxy
+      - --http-address=0.0.0.0:4180
+      - --provider=oidc
+      - --skip-oidc-discovery=true
+      - --oidc-issuer-url=http://localhost:8280/realms/bank
+      - --login-url=http://localhost:8280/realms/bank/protocol/openid-connect/auth
+      - --redeem-url=http://keycloak:8080/realms/bank/protocol/openid-connect/token
+      - --oidc-jwks-url=http://keycloak:8080/realms/bank/protocol/openid-connect/certs
+      - --code-challenge-method=S256
+      - --scope=openid profile email
+      - --cookie-secure=false
+      - --reverse-proxy=false
+      - --skip-provider-button=true
+    environment:
+      OAUTH2_PROXY_CLIENT_ID: dagster-ui
+      OAUTH2_PROXY_CLIENT_SECRET: ${DAGSTER_UI_CLIENT_SECRET}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET:?}
+      OAUTH2_PROXY_COOKIE_NAME: _dagster_sso
+      OAUTH2_PROXY_REDIRECT_URL: http://localhost:3002/oauth2/callback
+      OAUTH2_PROXY_UPSTREAMS: http://dagster-webserver:3000/
+      OAUTH2_PROXY_EMAIL_DOMAINS: "*"
+      OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE: /etc/oauth2-proxy/dagster-admins.txt
+    volumes: [./infra/oauth2-proxy/dagster-admins.txt:/etc/oauth2-proxy/dagster-admins.txt:ro]
+    ports: ["127.0.0.1:3002:4180"]
+    mem_limit: 64m
+
+  # =============================================== lineage (profile: ops)
+  marquez:
+    <<: *service
+    profiles: [ops]
+    image: marquezproject/marquez:0.51.1
+    platform: linux/amd64   # upstream publishes amd64 only (emulated on Apple silicon)
+    networks: [data, meta]
+    depends_on: { db-migrate: { condition: service_completed_successfully } }
+    environment:
+      MARQUEZ_CONFIG: /etc/marquez/marquez.yml
+      MARQUEZ_DB_PASSWORD: ${MARQUEZ_DB_PASSWORD}
+      JAVA_OPTS: "-XX:MaxRAMPercentage=70"
+    volumes: [./infra/marquez/marquez.yml:/etc/marquez/marquez.yml:ro]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:5001/healthcheck >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    mem_limit: 768m
+
+  marquez-web:
+    <<: *service
+    profiles: [ops]
+    image: marquezproject/marquez-web:0.51.1
+    platform: linux/amd64
+    networks: [data]
+    depends_on: { marquez: { condition: service_healthy } }
+    environment:
+      MARQUEZ_HOST: marquez
+      MARQUEZ_PORT: "5000"
+      WEB_PORT: "3000"
+    mem_limit: 256m
+
+  lineage-ui:
+    <<: *service
+    profiles: [ops]
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.4
+    networks: [data, edge]
+    depends_on:
+      marquez-web: { condition: service_started }
+      keycloak-reconcile: { condition: service_completed_successfully }
+    command: *oauth2-proxy
+    environment:
+      OAUTH2_PROXY_CLIENT_ID: lineage-ui
+      OAUTH2_PROXY_CLIENT_SECRET: ${LINEAGE_UI_CLIENT_SECRET}
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET}
+      OAUTH2_PROXY_COOKIE_NAME: _lineage_sso
+      OAUTH2_PROXY_REDIRECT_URL: http://localhost:3003/oauth2/callback
+      OAUTH2_PROXY_UPSTREAMS: http://marquez-web:3000/
+      # Lineage is metadata, not data: every colleague may explore it.
+      OAUTH2_PROXY_EMAIL_DOMAINS: bank.example
+    ports: ["127.0.0.1:3003:4180"]
+    mem_limit: 64m

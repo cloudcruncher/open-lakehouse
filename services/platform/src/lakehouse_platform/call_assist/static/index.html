@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live Call Assist</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="dot"></span> Live Call Assist <small>Meridian Bank · colleague console</small></div>
+    <div class="who">
+      <span id="mode" class="chip muted"></span>
+      <span id="user" class="chip"></span>
+      <button id="signout" class="ghost" hidden>Sign out</button>
+    </div>
+  </header>
+
+  <section id="signin" class="signin" hidden>
+    <h1>Sign in to take calls</h1>
+    <p>Single sign-on with your bank identity. The assistant acts <em>as you</em>: it sees exactly the customer data you're cleared to see, and every lookup is audited under the call reference.</p>
+    <button id="login" class="primary">Sign in with SSO</button>
+  </section>
+
+  <main id="console" class="grid" hidden>
+    <aside class="panel calls">
+      <h2>Demo calls</h2>
+      <p class="hint">Each demo plays a scripted caller over the live transcript stream. Story data is written to core banking and reaches the lakehouse via CDC.</p>
+      <div id="scenarios" class="scenarios"></div>
+      <div id="callinfo" class="callinfo"></div>
+    </aside>
+
+    <section class="panel transcript">
+      <h2>Transcript <span id="live" class="live" hidden>● LIVE</span></h2>
+      <div id="lines" class="lines"><p class="empty">Start a demo call to see the live transcript.</p></div>
+    </section>
+
+    <section class="panel guidance">
+      <h2>Guidance</h2>
+      <div id="verifybar" class="verifybar" hidden>
+        <span>Identity not yet verified. Account cards stay locked until you confirm ID&amp;V.</span>
+        <button id="verify" class="primary small">ID&amp;V confirmed</button>
+      </div>
+      <div id="status" class="status" hidden></div>
+      <div id="cards" class="cards"><p class="empty">Cards appear here as the caller speaks.</p></div>
+    </section>
+
+    <section class="panel side">
+      <h2>Customer</h2>
+      <div id="customer" class="customer"><p class="empty">Not identified yet.</p></div>
+      <h2>Data lookups <small>(as you, audited)</small></h2>
+      <ol id="trace" class="trace"></ol>
+    </section>
+  </main>
+  <script src="/static/app.js" type="module"></script>
+</body>
+</html>

@@ -1,0 +1,90 @@
+# Data contract for the customer_360 data product (Open Data Contract Standard v3.2.0).
+# The contract is the source of truth for column classification: CI fails if the OPA
+# masking tags (infra/opa/data/entitlements.json) and these tags ever disagree, and
+# `make verify` fails if the live table drifts from this schema.
+apiVersion: v3.2.0
+kind: DataContract
+id: urn:open-lakehouse:contract:customer-360
+name: customer_360
+version: 1.2.0
+status: active
+tenant: retail-bank
+domain: customer
+dataProduct: customer-360
+tags: [data-product, gold, pii]
+description:
+  purpose: >-
+    One row per customer, so colleagues and their AI assistants can serve a customer on a live call
+    in under a second.
+  usage: >-
+    Point lookups by customer_id through the governed MCP gateway or Trino. Rows and columns are
+    filtered and masked for each colleague by policy (OPA).
+  limitations: >-
+    Balances and 30-day aggregates are rebuilt on a schedule (see slaProperties). For live account
+    state, use silver.accounts and silver.transactions, which are streamed through CDC.
+servers:
+  - server: lakehouse
+    type: trino
+    environment: local
+    host: localhost
+    port: 8443
+    catalog: lakehouse
+    schema: gold
+    description: Trino over Iceberg tables in the Polaris REST catalog
+schema:
+  - name: customer_360
+    physicalName: lakehouse.gold.customer_360
+    physicalType: table
+    logicalType: object
+    dataGranularityDescription: One row per customer
+    properties:
+      - { name: customer_id, logicalType: string, physicalType: varchar, primaryKey: true, required: true, unique: true, criticalDataElement: true, classification: internal }
+      - { name: brand, logicalType: string, physicalType: varchar, required: true, classification: internal, description: "Brand the customer banks with; drives row-level security" }
+      - { name: first_name, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.name] }
+      - { name: last_name, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.name] }
+      - { name: date_of_birth, logicalType: date, physicalType: date, classification: restricted, tags: [pii.dob], description: Masked to year for contact-centre colleagues }
+      - { name: email, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.contact] }
+      - { name: phone, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.contact], description: Last 4 digits visible to the contact centre for identity checks }
+      - { name: postcode, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.location], description: Outward code only for partial-PII personas }
+      - { name: region, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: segment, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: vulnerability_flag, logicalType: boolean, physicalType: boolean, classification: restricted, tags: [special_category], description: "Recorded vulnerability (Consumer Duty). Nulled for analysts; filtering on it sees the masked value." }
+      - { name: customer_since, logicalType: timestamp, physicalType: timestamp(6) with time zone, classification: internal }
+      - { name: products_held, logicalType: array, physicalType: array(varchar), classification: internal }
+      - { name: open_accounts, logicalType: integer, physicalType: bigint, classification: internal }
+      - { name: deposit_balance, logicalType: number, physicalType: "decimal(18,2)", classification: confidential }
+      - { name: lending_balance, logicalType: number, physicalType: "decimal(18,2)", classification: confidential }
+      - { name: has_frozen_account, logicalType: boolean, physicalType: boolean, classification: internal }
+      - { name: txn_count_30d, logicalType: integer, physicalType: bigint, classification: internal }
+      - { name: spend_30d, logicalType: number, physicalType: "decimal(18,2)", classification: confidential }
+      - { name: reversed_txn_30d, logicalType: integer, physicalType: bigint, classification: internal }
+      - { name: last_txn_ts, logicalType: timestamp, physicalType: timestamp(6) with time zone, classification: internal }
+      - { name: open_complaints, logicalType: integer, physicalType: bigint, classification: internal }
+      - { name: total_complaints, logicalType: integer, physicalType: bigint, classification: internal }
+      - { name: fos_referrals, logicalType: integer, physicalType: bigint, classification: internal }
+      - { name: last_complaint_category, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: last_complaint_summary, logicalType: string, physicalType: varchar, classification: restricted, tags: [customer_authored], description: "Written by the customer: data, never instructions. Agents receive it under customer_authored_text." }
+      - { name: last_complaint_status, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: last_complaint_opened_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, classification: internal }
+      - { name: refreshed_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal, description: When this row was rebuilt (freshness shown to agents) }
+    quality:
+      - { name: row_count_matches_customers, type: sql, dimension: completeness, severity: error, description: Exactly one row per silver customer, query: "SELECT (SELECT count(*) FROM gold.customer_360) - (SELECT count(*) FROM silver.customers)", mustBe: 0 }
+      - { name: no_negative_counts, type: sql, dimension: accuracy, severity: error, query: "SELECT count(*) FROM gold.customer_360 WHERE open_accounts < 0 OR open_complaints < 0", mustBe: 0 }
+      - { name: brand_not_null, type: sql, dimension: completeness, severity: error, query: "SELECT count(*) FROM gold.customer_360 WHERE brand IS NULL", mustBe: 0 }
+roles:
+  - { role: contact_centre, access: read, description: "Own brand; partial PII for identity checks; vulnerability visible" }
+  - { role: complaints_investigator, access: read, description: "Assigned brands; full PII" }
+  - { role: analyst, access: read, description: "All brands; no PII; special-category data nulled" }
+team:
+  name: data-platform
+  description: Owns the lakehouse platform and the customer_360 data product
+  members:
+    - { username: data-platform-lead, role: owner }
+    - { username: contact-centre-product, role: consumer-representative }
+support:
+  - { channel: "#data-platform", tool: slack, url: "https://example.invalid/slack/data-platform" }
+slaProperties:
+  - { property: frequency, value: 30, unit: m, element: customer_360.refreshed_at, description: Rebuilt every 30 minutes (Dagster schedule gold_refresh) }
+  - { property: latency, value: 1, unit: h, element: customer_360.refreshed_at, description: Dagster freshness policy fails the asset if it's older than 1 hour }
+  - { property: availability, value: "99.9%", description: "Agent tool calls that read this product, measured monthly" }
+  - { property: retention, value: 7, unit: d, description: Time travel through Iceberg snapshots }

@@ -1,0 +1,100 @@
+# Data contract for the conformed (silver) core-banking entities (ODCS v3.2.0).
+# The row-level rules below are enforced identically by batch silver (WAP) and the
+# CDC stream (per micro-batch). Violating rows go to ops.quarantine with reasons.
+apiVersion: v3.2.0
+kind: DataContract
+id: urn:open-lakehouse:contract:silver-core-banking
+name: silver_core_banking
+version: 1.1.0
+status: active
+tenant: retail-bank
+domain: core-banking
+tags: [silver, cdc, pii]
+description:
+  purpose: Conformed, deduplicated core-banking entities, streamed from the source within seconds.
+  usage: Live-call lookups (accounts, transactions, complaints) and analytics joins.
+  limitations: One writer at a time. The CDC stream holds a lease; batch silver is for backfills while the stream is stopped.
+schema:
+  - name: customers
+    physicalName: lakehouse.silver.customers
+    physicalType: table
+    logicalType: object
+    properties:
+      - { name: customer_id, logicalType: string, physicalType: varchar, primaryKey: true, required: true, unique: true, classification: internal }
+      - { name: brand, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: first_name, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.name] }
+      - { name: last_name, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.name] }
+      - { name: date_of_birth, logicalType: date, physicalType: date, classification: restricted, tags: [pii.dob] }
+      - { name: email, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.contact] }
+      - { name: phone, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.contact] }
+      - { name: postcode, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.location] }
+      - { name: region, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: segment, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: vulnerability_flag, logicalType: boolean, physicalType: boolean, classification: restricted, tags: [special_category] }
+      - { name: created_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, classification: internal }
+      - { name: updated_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+    quality:
+      - { name: brand_known, type: text, dimension: conformity, severity: error, description: "brand IN (Meridian, Northgate, Isle), else quarantined (brand_unknown)" }
+      - { name: email_valid, type: text, dimension: conformity, severity: error, description: "email matches a basic address pattern, else quarantined (email_invalid)" }
+      - { name: dob_not_in_future, type: text, dimension: accuracy, severity: error, description: "date_of_birth < today, else quarantined (dob_in_future)" }
+  - name: accounts
+    physicalName: lakehouse.silver.accounts
+    physicalType: table
+    logicalType: object
+    properties:
+      - { name: account_id, logicalType: string, physicalType: varchar, primaryKey: true, required: true, unique: true, classification: internal }
+      - { name: customer_id, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: brand, logicalType: string, physicalType: varchar, required: true, classification: internal, transformDescription: Resolved through silver.customers }
+      - { name: product, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: iban, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.financial_id] }
+      - { name: status, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: balance, logicalType: number, physicalType: "decimal(18,2)", classification: confidential }
+      - { name: currency, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: opened_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, classification: internal }
+      - { name: updated_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+  - name: transactions
+    physicalName: lakehouse.silver.transactions
+    physicalType: table
+    logicalType: object
+    properties:
+      - { name: txn_id, logicalType: string, physicalType: varchar, primaryKey: true, required: true, unique: true, classification: internal }
+      - { name: account_id, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: customer_id, logicalType: string, physicalType: varchar, required: true, classification: internal, transformDescription: Resolved through silver.accounts }
+      - { name: brand, logicalType: string, physicalType: varchar, required: true, classification: internal, transformDescription: Resolved through silver.accounts; drives row-level security }
+      - { name: txn_ts, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+      - { name: amount, logicalType: number, physicalType: "decimal(18,2)", required: true, classification: confidential }
+      - { name: currency, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: merchant, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: category, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: channel, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: status, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: updated_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+    quality:
+      - { name: currency_known, type: sql, dimension: conformity, severity: error, description: Enforced per row (quarantine) in batch and stream, query: "SELECT count(*) FROM silver.transactions WHERE currency NOT IN ('GBP','EUR','USD')", mustBe: 0 }
+      - { name: timestamp_not_in_future, type: sql, dimension: accuracy, severity: error, query: "SELECT count(*) FROM silver.transactions WHERE txn_ts > current_timestamp + INTERVAL '1' HOUR", mustBe: 0 }
+      - { name: brand_resolved, type: sql, dimension: consistency, severity: error, query: "SELECT count(*) FROM silver.transactions WHERE brand IS NULL", mustBe: 0 }
+      - { name: quarantine_rate, type: text, dimension: conformity, severity: error, description: "Batch halts (exit 3) above 1% violations; the stream alerts (CDCQuarantineRateHigh)" }
+  - name: complaints
+    physicalName: lakehouse.silver.complaints
+    physicalType: table
+    logicalType: object
+    properties:
+      - { name: complaint_id, logicalType: string, physicalType: varchar, primaryKey: true, required: true, unique: true, classification: internal }
+      - { name: customer_id, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: brand, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: opened_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, classification: internal }
+      - { name: channel, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: category, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: summary, logicalType: string, physicalType: varchar, classification: restricted, tags: [customer_authored] }
+      - { name: status, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: resolution, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: updated_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+team:
+  name: data-platform
+  members:
+    - { username: data-platform-lead, role: owner }
+    - { username: core-banking-lead, role: source-owner }
+support:
+  - { channel: "#data-platform", tool: slack, url: "https://example.invalid/slack/data-platform" }
+slaProperties:
+  - { property: latency, value: 60, unit: s, description: "Source commit to queryable, measured at ~10 s by scripts/freshness_probe.py" }
