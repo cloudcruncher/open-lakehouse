@@ -4,7 +4,10 @@ State on 26 Sep 2026. Fixed that day: Dagster open to any colleague, Grafana mem
 login, the nightly silver lease race, SLO panels showing "No data", and the quarantine-rate axis
 (PR #5). Then (PR #7): a SQL workbench (Superset SQL Lab) that queries Trino as each colleague,
 bronze readable by platform admins with raw payloads NULL (which also closed quarantine payloads
-to them), `SHOW TABLES` working, and sign-in via `127.0.0.1` redirected. `make verify`: 55/55.
+to them), `SHOW TABLES` working, and sign-in via `127.0.0.1` redirected. Then the AI layer
+(PRs #8 to #10): a labelling guide that brought Claude's precision to 1.00 and is prompt-cached,
+the after-call note drafted by Claude from the transcript, a daily spend cap, and AI usage and
+cost on the Live Call Assist dashboard with two alerts. `make verify`: 56/56.
 
 Ordered by value. Each item says where to start and how to know it is done.
 
@@ -71,7 +74,22 @@ needs the contents.
 - Done when: ops_admin can read one payload for a stated reason for a limited time, and the
   access is in the audit chain.
 
-## 9. Smaller items
+## 9. "Ask the assistant" panel
+A colleague types a question during a call ("refund rule for card fraud?", "any open
+complaints?"). Claude answers from the procedure library with citations, and may call the
+same governed MCP tools as that colleague (OPA masks apply, every lookup audited).
+- Where: `call_assist/` (a new endpoint and console panel), under the spend cap (ADR 12).
+- Done when: answers cite a procedure or a tool result, pass the grounding check, fall back
+  to plain search without a key or budget, and an analyst's question returns masked data.
+
+## 10. Grow the understanding eval set
+35 labelled lines is a small sample; 1.00 on it is not proof. Add 100+ messier lines (from
+the call simulator's scenarios and real phrasing), keep them out of `label_guide.md`, and
+re-check Haiku 4.5 against the floors before changing model.
+
+## 11. Smaller items
+- The AI spend estimate lives in memory: it restarts at 0 when `call-assist` restarts, so
+  the cap is per process-day. Persist it (Postgres) if the cap must be strict.
 - Grafana, Dagster and Marquez opened on `127.0.0.1` send Keycloak a `localhost` callback, so the
   sign-in cookie lands on the other host and can fail. Console and Superset now redirect to
   `localhost`; do the same (or document `localhost` only) for the rest.

@@ -566,9 +566,96 @@ def assist_dashboard():
                 24,
                 8,
             ),
+            *ai_usage_panels(21),
         ],
-        "The agent's own SLIs: speed, grounding and safety. Offline quality gates: call-assist-evals in CI.",
+        "The agent's own SLIs: speed, grounding and safety, and how the AI is used and what it costs. "
+        "Offline quality gates: call-assist-evals in CI.",
     )
+
+
+LLM_TOKENS = "sum(increase(assist_llm_tokens_total{{kind=~\"{}\"}}[1h]))"
+
+
+def ai_usage_panels(y):
+    """Is the AI answering, what does it cost, and does the prompt cache work (ADR 12)."""
+    cap_share = "max(assist_llm_spend_usd_today) / clamp_min(max(assist_llm_budget_usd), 1e-9)"
+    cache_hit = f"{LLM_TOKENS.format('cache_read')} / clamp_min({LLM_TOKENS.format('input|cache_read|cache_write')}, 1)"
+    return [
+        row("AI usage and cost — Claude answers or falls back, under a daily spend cap", y),
+        stat("AI spend today (est.)", "max(assist_llm_spend_usd_today)", "currencyUSD", 0, y + 1, 5, 4, decimals=4),
+        stat(
+            "Share of daily cap",
+            cap_share,
+            "percentunit",
+            5,
+            y + 1,
+            5,
+            4,
+            [
+                {"color": GREEN, "value": None},
+                {"color": AMBER, "value": 0.8},
+                {"color": RED, "value": 1},
+            ],
+            0,
+        ),
+        stat("Prompt cache hit (1h)", cache_hit, "percentunit", 10, y + 1, 5, 4, decimals=0),
+        stat(
+            "Rules fallbacks (1h)",
+            'sum(increase(assist_llm_extractions_total{outcome!="ok"}[1h])) or vector(0)',
+            "none",
+            15,
+            y + 1,
+            4,
+            4,
+            [{"color": GREEN, "value": None}, {"color": AMBER, "value": 1}],
+            0,
+        ),
+        stat(
+            "Call notes by AI (1h)",
+            'sum(increase(assist_llm_summaries_total{outcome="ok"}[1h])) or vector(0)',
+            "none",
+            19,
+            y + 1,
+            5,
+            4,
+            decimals=0,
+        ),
+        ts(
+            "Model calls by outcome (per min)",
+            [
+                ("sum by (outcome) (rate(assist_llm_extractions_total[5m])) * 60", "line: {{outcome}}"),
+                ("sum by (outcome) (rate(assist_llm_summaries_total[5m])) * 60", "note: {{outcome}}"),
+            ],
+            "short",
+            0,
+            y + 5,
+            8,
+            8,
+        ),
+        ts(
+            "Line understanding latency (deadline 2.5 s)",
+            [
+                ("histogram_quantile(0.5, sum by (le) (rate(assist_llm_extraction_seconds_bucket[5m])))", "p50"),
+                ("histogram_quantile(0.95, sum by (le) (rate(assist_llm_extraction_seconds_bucket[5m])))", "p95"),
+            ],
+            "s",
+            8,
+            y + 5,
+            8,
+            8,
+            [{"color": GREEN, "value": None}, {"color": RED, "value": 2.5}],
+            soft_max=3,
+        ),
+        ts(
+            "Tokens by kind (per min): cache reads bill at 0.1x",
+            [("sum by (kind) (rate(assist_llm_tokens_total[5m])) * 60", "{{kind}}")],
+            "short",
+            16,
+            y + 5,
+            8,
+            8,
+        ),
+    ]
 
 
 def main() -> None:

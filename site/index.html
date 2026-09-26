@@ -240,7 +240,7 @@ footer { border-top: 1px solid var(--line); padding-block: 28px 48px; color: var
     <a href="#demo">Demo</a><a href="#architecture">Architecture</a><a href="#proof">Proof</a><a href="#chaos">Chaos</a><a href="#scale">Scale</a><a href="https://github.com/cloudcruncher/open-lakehouse">GitHub</a>
   </nav>
   <div class="badges" aria-label="Latest CI results">
-    <span class="badge">ci <b>passing</b></span><span class="badge">e2e <b>55/55</b></span><span class="badge">release <b>signed</b></span>
+    <span class="badge">ci <b>passing</b></span><span class="badge">e2e <b>56/56</b></span><span class="badge">release <b>signed</b></span>
   </div>
 </header>
 
@@ -252,7 +252,7 @@ footer { border-top: 1px solid var(--line); padding-block: 28px 48px; color: var
     <p class="lede">An open lakehouse (Iceberg, Polaris, Trino, OPA, Kafka, Spark) built around one hard consumer: an AI assistant on a bank colleague's live customer call. The assistant is the demo. The platform underneath is the point, so every answer shows how the platform produced it.</p>
     <div class="hero-stats">
       <div><b class="num">~10 s</b><span>source commit to visible for a colleague (CDC)</span></div>
-      <div><b class="num">55</b><span>end-to-end checks on every push, from an empty machine</span></div>
+      <div><b class="num">56</b><span>end-to-end checks on every push, from an empty machine</span></div>
       <div><b class="num">11/11</b><span>components killed and recovered with no data lost</span></div>
     </div>
     <div class="cta">
@@ -413,6 +413,7 @@ make sql U=carol Q="SELECT * FROM lakehouse.silver.accounts"  <span class="c"># 
         <tr><td>Bad data never reaches silver</td><td>ODCS contracts, quarantine with reasons, WAP publish only after checks; late parents are retried, not dropped</td><td class="res">0 violations</td></tr>
         <tr><td>Safe AI guidance</td><td>Offline eval gate: intent/vulnerability/risk recall, 8 scripted calls, zero ungrounded cards; injection rejected before any SQL</td><td class="res">8/8 · 0 ungrounded</td></tr>
         <tr><td>Raw data for platform admins only</td><td>Colleagues are refused bronze; the admin reads bronze but every whole-record payload is NULL, including in quarantine; contracts declare the tag</td><td class="res">pass</td></tr>
+        <tr><td>AI spend capped and visible</td><td>A daily cap on model spend is exported and alerted on; every fallback to rules or the template names its reason; cost and cache hits per call on the dashboard</td><td class="res">pass</td></tr>
         <tr><td>Operable</td><td>Every scrape target up (Trino via a machine identity), 20 SLO and burn-rate rules loaded, dashboards from code, Dagster behind SSO</td><td class="res">pass</td></tr>
         <tr><td>Supply chain</td><td>Actions pinned by SHA, gitleaks over full history, Trivy, SBOM + provenance, cosign keyless signatures on GHCR images</td><td class="res">signed</td></tr>
       </tbody>
@@ -483,7 +484,7 @@ make sql U=carol Q="SELECT * FROM lakehouse.silver.accounts"  <span class="c"># 
       <pre class="cmd"><span class="c"># Docker with ~12 GB, uv, make</span>
 git clone https://github.com/cloudcruncher/open-lakehouse
 cd open-lakehouse
-make demo        <span class="c"># up, seed, pipelines, 55 checks</span>
+make demo        <span class="c"># up, seed, pipelines, 56 checks</span>
 make urls        <span class="c"># console, Grafana, Dagster, lineage, SQL workbench</span>
 make live-demo   <span class="c"># play every demo call as alice</span>
 make chaos       <span class="c"># break it on purpose</span></pre>
