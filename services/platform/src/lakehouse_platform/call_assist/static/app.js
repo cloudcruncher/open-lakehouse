@@ -147,6 +147,7 @@ function addCard(c) {
   card.append(meta);
   if (c.procedure) { const d = el("details"); d.append(el("summary", "", c.procedure.title), el("p", "", c.procedure.excerpt)); card.append(d); }
   if (c.evidence?.length) { const d = el("details"); d.append(el("summary", "", "Evidence (what this card is based on)"), el("pre", "", JSON.stringify(c.evidence, null, 1))); card.append(d); }
+  for (const x of c.xray ?? []) card.append(xray(x));
   if (c.requires_verification && !verified) $("verifybar").hidden = false;
   $("cards").prepend(card);
 }
@@ -180,7 +181,46 @@ function showCustomer(ev) {
 function addTrace(ev) {
   const li = el("li");
   li.append(el("span", "", ev.tool), el("span", ev.outcome, `${ev.outcome} ${ev.ms ?? ""}ms`));
+  if (ev.provenance) li.append(xray({ tool: ev.tool, ...ev.provenance }));
   $("trace").append(li);
+}
+
+// ------------------------------------------------------------ platform x-ray
+// How the lakehouse produced the data behind a card: pipeline -> Iceberg snapshot ->
+// Trino (as the colleague, pinned to that snapshot) -> OPA decision -> audit row.
+const ago = (s) => (s == null ? "" : s < 90 ? `${Math.round(s)} s` : s < 5400 ? `${Math.round(s / 60)} min` : `${Math.round(s / 3600)} h`);
+
+function xray(x) {
+  const d = el("details", "xray");
+  const snap = x.snapshot, q = x.query ?? {}, pol = x.policy ?? {}, aud = x.audit ?? {};
+  const masks = Object.keys(pol.masked_columns ?? {});
+  d.append(el("summary", "", `🔬 How the platform answered this · ${x.table?.replace("lakehouse.", "")}` +
+    (snap ? ` @ snapshot …${snap.id.slice(-6)}` : "") + (aud.seq ? ` · audit #${aud.seq}` : "")));
+  const steps = el("ol", "steps");
+  const step = (icon, title, lines) => {
+    const li = el("li"); li.append(el("b", "", `${icon} ${title}`));
+    for (const l of lines.filter(Boolean)) li.append(el("span", "", l));
+    steps.append(li);
+  };
+  step("🏭", "Maintained by", [x.maintained_by]);
+  step("🧊", "Iceberg snapshot", snap ? [
+    `id ${snap.id}`,
+    `this commit: ${snap.committed_by}`,
+    `committed ${ago(snap.committed_seconds_before_query)} before this lookup`,
+    ...Object.entries(snap.summary ?? {}).map(([k, v]) => `${k}: ${v}`),
+  ] : ["snapshot not resolved: query read the table's current state"]);
+  step("⚙️", "Trino query", [
+    `as ${q.as_user} (their own token, not a service account)`,
+    q.pinned_to_snapshot ? "pinned: FOR VERSION AS OF this snapshot, reproducible by time travel" : null,
+    `${q.rows} row(s) · ${q.query_id ?? ""}`,
+  ]);
+  step("🛡️", "OPA policy for this colleague", pol.unavailable ? ["explanation unavailable (Trino still enforced it)"] : [
+    `rows: ${pol.row_filter ?? "no filter (all brands)"}`,
+    masks.length ? `masked: ${masks.join(", ")}` : "masked: none of the columns read",
+  ]);
+  step("🧾", "Audit", [`row #${aud.seq} · chain hash ${aud.row_hash}…`, `purpose ${aud.purpose} · ${aud.latency_ms} ms end to end`]);
+  d.append(steps);
+  return d;
 }
 
 // ---------------------------------------------------------------------- boot

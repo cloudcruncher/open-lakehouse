@@ -30,14 +30,16 @@ class AuditLog:
     def __init__(self, dsn: str) -> None:
         self.dsn = dsn
 
-    def write(self, e: AuditEvent) -> None:
+    def write(self, e: AuditEvent) -> tuple[int, str]:
         """Audit is part of the call: if the trail can't be written, the call fails.
-        An unaudited data access is worse than an unanswered question."""
+        An unaudited data access is worse than an unanswered question.
+        Returns the row's sequence number and chain hash, for provenance."""
         with psycopg.connect(self.dsn, connect_timeout=3, autocommit=True) as conn:
-            conn.execute(
+            row = conn.execute(
                 """INSERT INTO audit.tool_calls (event_id, colleague, agent_client, tool, arguments, purpose,
                                                  outcome, rows_returned, trino_query_ids, latency_ms, error)
-                   VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s)""",
+                   VALUES (%s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s)
+                   RETURNING seq, row_hash""",
                 (
                     uuid.uuid4(),
                     e.colleague,
@@ -51,7 +53,8 @@ class AuditLog:
                     e.latency_ms,
                     (e.error or "")[:500] or None,
                 ),
-            )
+            ).fetchone()
+        return int(row[0]), str(row[1])
 
     def ping(self) -> bool:
         try:

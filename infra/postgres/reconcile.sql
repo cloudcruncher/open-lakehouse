@@ -44,3 +44,11 @@ GRANT SELECT ON core.customers, core.accounts, core.transactions, core.complaint
 -- ownership of source tables.
 SELECT 'CREATE PUBLICATION corebank_cdc FOR TABLE core.customers, core.accounts, core.transactions, core.complaints'
 WHERE NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'corebank_cdc') \gexec
+
+-- ------------------------------------------------------------- audit trail
+\connect audit
+
+-- The gateway links each answer to its audit row (provenance), so INSERT ... RETURNING
+-- needs to read back the row's number and chain hash. Only those two columns: the
+-- writer still can't read who looked at what.
+GRANT SELECT (seq, row_hash) ON audit.tool_calls TO audit_writer;

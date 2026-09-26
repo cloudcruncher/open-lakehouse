@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import trino
@@ -32,6 +32,7 @@ class TrinoConfig:
 class QueryResult:
     rows: list[dict[str, Any]]
     query_id: str | None
+    columns: list[tuple[str, str]] = field(default_factory=list)  # (name, Trino type)
 
 
 class DataAccess:
@@ -71,8 +72,10 @@ class DataAccess:
             cur = conn.cursor()
             cur.execute(sql, params)
             rows = cur.fetchmany(self.cfg.max_rows)
-            cols = [d[0] for d in cur.description or []]
-            return QueryResult([dict(zip(cols, r, strict=True)) for r in rows], cur.query_id)
+            desc = cur.description or []
+            cols = [d[0] for d in desc]
+            types = [(d[0], str(d[1])) for d in desc]
+            return QueryResult([dict(zip(cols, r, strict=True)) for r in rows], cur.query_id, types)
         finally:
             conn.close()
 

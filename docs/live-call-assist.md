@@ -53,6 +53,25 @@ Account cards stay **locked (blurred) until the colleague confirms ID&V**.
 | Everything is audited | Every lookup is in the hash-chained audit log under the call reference |
 | No credentials of its own | No DB, storage or catalog access; tokens are held in memory only |
 
+## Platform x-ray: how the lakehouse answered
+
+Live Call Assist is a demo of the *platform*, so each card can show how its data was
+produced. Open "How the platform answered this" on any card (or on a data lookup):
+
+| Step | What it shows | Where it comes from |
+|---|---|---|
+| Maintained by | the pipeline that owns the table (CDC stream or batch WAP) | gateway allow-list (`provenance.py`) |
+| Iceberg snapshot | snapshot id, the Spark job that committed it (`app-name`), how long before the lookup | `$refs` (main only, never a WAP branch) joined to `$snapshots` |
+| Trino query | query id, run **as the colleague**, **pinned** with `FOR VERSION AS OF` | the gateway pins every query to the snapshot it just resolved |
+| OPA policy | the row filter and column masks applied to this colleague | the same OPA endpoints Trino calls (`rowFilters`, `batchColumnMasks`) |
+| Audit | audit row number and chain hash, purpose (call reference) | `INSERT ... RETURNING seq, row_hash` (the writer may read only those two columns) |
+
+Pinning makes every answer reproducible: `SELECT ... FOR VERSION AS OF <snapshot id>`
+returns exactly what the assistant saw, which is the question a complaint or an
+auditor asks afterwards. It costs one metadata query per lookup (about 100 ms here).
+Provenance is kept out of the evidence the grounding check reads, and explaining the
+policy never gates the answer: Trino has already enforced it.
+
 ## Quality: evals as a CI gate
 
 `make evals` runs with no platform and no LLM:

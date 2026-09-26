@@ -73,6 +73,8 @@ class Card:
     requires_verification: bool = False
     utterance_seq: int | None = None
     latency_ms: int | None = None
+    # How the platform produced the data behind this card, per tool (see mcp_server/provenance.py).
+    xray: list[dict[str, Any]] = field(default_factory=list)
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:10])
 
     @property
@@ -132,6 +134,7 @@ class CallSession:
         self.verified = False
         self.handled: set[str] = set()
         self.tool_log: list[dict[str, Any]] = []
+        self.provenance: dict[str, dict[str, Any]] = {}
         self.ended = False
         self._lock = asyncio.Lock()
         self._pending: Utterance | None = None
@@ -610,7 +613,12 @@ class CallSession:
         entry: dict[str, Any] = {"type": "tool_call", "tool": tool, "args": args}
         try:
             result = await self.tools.call(tool, args)
-            entry.update(outcome="ok", ms=int((time.monotonic() - started) * 1000))
+            # Provenance describes the platform, not the customer: keep it out of the
+            # evidence the grounding check reads, and attach it to cards separately.
+            provenance = result.pop("provenance", None)
+            if provenance:
+                self.provenance[tool] = provenance
+            entry.update(outcome="ok", ms=int((time.monotonic() - started) * 1000), provenance=provenance)
             TOOL_CALLS.labels(tool, "ok").inc()
             return result
         except ToolFailure as exc:
@@ -649,6 +657,8 @@ class CallSession:
             await self.emit({"type": "withheld", "title": card.title, "unsupported": missing})
             return
         card.utterance_seq = u.seq if u else None
+        tools = dict.fromkeys(e["tool"] for e in card.evidence if isinstance(e, dict) and "tool" in e)
+        card.xray = [{"tool": t, **self.provenance[t]} for t in tools if t in self.provenance]
         card.latency_ms = int((time.monotonic() - received) * 1000)
         self.cards.append(card)
         CARDS.labels(card.kind).inc()

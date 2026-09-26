@@ -103,8 +103,10 @@ def eval_understanding(extractor: Any) -> dict[str, Any]:
 
 
 # -------------------------------------------------------------------- calls
-async def run_call(case: dict[str, Any], today: date, extractor: Any) -> dict[str, Any]:
-    events: list[dict[str, Any]] = []
+async def run_call(
+    case: dict[str, Any], today: date, extractor: Any, sink: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    events: list[dict[str, Any]] = [] if sink is None else sink
 
     async def emit(ev: dict[str, Any]) -> None:
         events.append(ev)

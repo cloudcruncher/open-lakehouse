@@ -5,7 +5,8 @@
 """Record the Live Call Assist console handling a live call, as an animated GIF.
 
 Signs in through Keycloak (SSO + PKCE, like a colleague), starts a demo call,
-clicks "ID&V confirmed" once identity is shown, and captures frames until the call ends.
+clicks "ID&V confirmed" once identity is shown, captures frames until the call ends,
+then opens a card's platform x-ray (how the lakehouse produced the answer).
 Needs: `uv run --with playwright python -m playwright install chromium` once.
 
 Usage: uv run scripts/record_demo.py [scenario] [--out docs/img/live-call-assist.gif]
@@ -79,7 +80,15 @@ def main() -> None:
         # The draft call note lands when the call ends; hold on it.
         page.wait_for_selector(".card.summary", timeout=30000)
         time.sleep(0.5)
-        snap(8)
+        snap(4)
+        # End on the platform, not just the assistant: open the provenance chain of the
+        # card that found the payment (snapshot, Trino, OPA decision, audit row).
+        xray = page.locator(".card:has(.xray)").first.locator(".xray")
+        if xray.count():
+            xray.evaluate("d => d.open = true")
+            xray.scroll_into_view_if_needed()
+            time.sleep(0.4)
+        snap(10)
         browser.close()
 
     OUT.parent.mkdir(parents=True, exist_ok=True)

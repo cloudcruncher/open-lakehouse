@@ -9,6 +9,9 @@ Guarantees on every tool call, in order:
   5. bounded         parameterised SQL only, row caps, a 10s query budget
   6. resilient       retry once on transient errors; circuit breaker fails fast
   7. audited         hash-chained, append-only record, written even for denials
+  8. explained       every answer carries its provenance: the Iceberg snapshot it was
+                     pinned to, the pipeline that wrote it, the Trino query, the OPA
+                     decision for this colleague, and the audit row (see provenance.py)
 
 Free text written by customers (complaint summaries) is returned under
 `customer_authored_text`: it is data, never instructions for the agent.
@@ -20,7 +23,7 @@ import logging
 import os
 import re
 import time
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Annotated, Any
 
@@ -39,6 +42,7 @@ from starlette.responses import JSONResponse, Response
 from .audit import AuditEvent, AuditLog
 from .data import TRANSIENT, DataAccess, TrinoConfig
 from .identity import IdentityConfig, KeycloakTokenVerifier, TokenExchanger
+from .provenance import WRITERS, PolicyExplainer, describe_snapshot, snapshot_sql
 from .resilience import CircuitBreaker, CircuitOpenError, RateLimiter
 
 log = logging.getLogger("mcp-gateway")
@@ -69,6 +73,7 @@ data = DataAccess(
     ),
     breaker,
 )
+policy = PolicyExplainer(os.environ.get("OPA_URL", "http://opa:8181"))
 audit = AuditLog(
     f"host={os.environ.get('AUDIT_DB_HOST', 'postgres')} dbname=audit user=audit_writer "
     f"password={os.environ.get('AUDIT_WRITER_PASSWORD', '')}"
@@ -124,8 +129,15 @@ def _jsonable(row: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-async def governed(tool: str, args: dict, purpose: str, sql: str, params: list[Any]) -> list[dict[str, Any]]:
-    """Run one parameterised query as the colleague, with limits, resilience and auditing."""
+async def governed(
+    tool: str, args: dict, purpose: str, table: str, sql: str, params: list[Any]
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Run one parameterised query as the colleague, with limits, resilience and auditing.
+
+    `sql` names its table as `{table}`: the query is pinned to the snapshot current at
+    lookup time, so the returned provenance says exactly which data answered it.
+    Returns (rows, provenance).
+    """
     access = get_access_token()
     if access is None:  # the auth middleware should make this impossible
         raise ToolError("unauthenticated")
@@ -134,6 +146,7 @@ async def governed(tool: str, args: dict, purpose: str, sql: str, params: list[A
     event = AuditEvent(
         colleague=colleague, agent_client=access.client_id, tool=tool, arguments=args, purpose=purpose
     )
+    provenance: dict[str, Any] = {"table": f"lakehouse.{table}", "maintained_by": WRITERS.get(table)}
     started = time.monotonic()
     try:
         if not limiter.allow(colleague):
@@ -144,10 +157,36 @@ async def governed(tool: str, args: dict, purpose: str, sql: str, params: list[A
         # seconds than a correct answer after the customer has hung up. Timeouts count
         # against the circuit breaker, so a sick dependency is shed quickly.
         with anyio.fail_after(TOOL_DEADLINE_S):
-            result = await anyio.to_thread.run_sync(data.query, token, sql, params, abandon_on_cancel=True)
+            queried_at = datetime.now(UTC)
+            try:
+                snap = await anyio.to_thread.run_sync(
+                    data.query, token, snapshot_sql(table), [], abandon_on_cancel=True
+                )
+                snapshot = describe_snapshot(snap.rows[0] if snap.rows else None, queried_at)
+                if snap.query_id:
+                    event.trino_query_ids.append(snap.query_id)
+            except Exception as exc:  # noqa: BLE001 - provenance is best-effort; the answer is not
+                log.warning("snapshot lookup failed for %s: %s", table, str(exc)[:200])
+                snapshot = None
+            source = f"{table} FOR VERSION AS OF {int(snapshot['id'])}" if snapshot else table
+            result = await anyio.to_thread.run_sync(
+                data.query, token, sql.format(table=source), params, abandon_on_cancel=True
+            )
         event.rows_returned = len(result.rows)
-        event.trino_query_ids = [result.query_id] if result.query_id else []
-        return [_jsonable(r) for r in result.rows]
+        if result.query_id:
+            event.trino_query_ids.append(result.query_id)
+        provenance["snapshot"] = snapshot
+        provenance["query"] = {
+            "engine": "Trino",
+            "query_id": result.query_id,
+            "as_user": colleague,
+            "pinned_to_snapshot": snapshot is not None,
+            "rows": len(result.rows),
+        }
+        provenance["policy"] = await anyio.to_thread.run_sync(
+            policy.explain, colleague, table, result.columns
+        )
+        return [_jsonable(r) for r in result.rows], provenance
     except ToolError:
         raise
     except (TimeoutError, *TRANSIENT) as exc:
@@ -179,8 +218,12 @@ async def governed(tool: str, args: dict, purpose: str, sql: str, params: list[A
         TOOL_CALLS.labels(tool, event.outcome).inc()
         TOOL_LATENCY.labels(tool).observe(elapsed)
         BREAKER_OPEN.set(1 if breaker.state == "open" else 0)
-        await anyio.to_thread.run_sync(audit.write, event)
-
+        seq, row_hash = await anyio.to_thread.run_sync(audit.write, event)
+        # `provenance` is the object already handed to the caller: the audit row is
+        # written last (it records the outcome), so it is linked in here.
+        provenance["audit"] = {
+            "seq": seq, "row_hash": row_hash[:16], "purpose": purpose, "latency_ms": event.latency_ms
+        }
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -196,7 +239,7 @@ async def find_customer(
         raise ToolError("Give at least one of last_name, postcode_outward, phone_last4.")
     # Fully static SQL: every value is a bound parameter, unused filters collapse to TRUE.
     sql = (
-        "SELECT customer_id, brand, first_name, last_name, postcode, segment FROM gold.customer_360 "
+        "SELECT customer_id, brand, first_name, last_name, postcode, segment FROM {table} "
         "WHERE (CAST(? AS varchar) IS NULL OR lower(last_name) = lower(?)) "
         "AND (CAST(? AS varchar) IS NULL OR split_part(postcode, ' ', 1) = upper(?)) "
         "AND (CAST(? AS varchar) IS NULL OR substr(phone, -4) = ?) "
@@ -204,28 +247,33 @@ async def find_customer(
     )
     params = [last_name, last_name, postcode_outward, postcode_outward, phone_last4, phone_last4]
     args = {"last_name": last_name, "postcode_outward": postcode_outward, "phone_last4": phone_last4}
-    matches = await governed("find_customer", args, call_reference, sql, params)
-    return {"matches": matches, "count": len(matches)}
+    matches, prov = await governed("find_customer", args, call_reference, "gold.customer_360", sql, params)
+    return {"matches": matches, "count": len(matches), "provenance": prov}
 
 
 @mcp.tool(annotations=READ_ONLY)
 async def get_customer_360(call_reference: CallRef, customer_id: CustomerId) -> dict:
     """The customer's profile, holdings, balances, 30-day activity and complaint history, with data freshness.
     Fields the colleague is not cleared to see come back masked or null."""
-    sql = "SELECT * FROM gold.customer_360 WHERE customer_id = ?"
-    found = await governed(
+    sql = "SELECT * FROM {table} WHERE customer_id = ?"
+    found, prov = await governed(
         "get_customer_360",
         {"customer_id": customer_id},
         call_reference,
+        "gold.customer_360",
         sql, [customer_id],
     )
     if not found:
-        return {"found": False, "note": "No customer with that id is visible to this colleague."}
+        return {
+            "found": False,
+            "note": "No customer with that id is visible to this colleague.",
+            "provenance": prov,
+        }
     profile = found[0]
     if profile.get("last_complaint_summary") is not None:
         profile["customer_authored_text"] = {"last_complaint_summary": profile.pop("last_complaint_summary")}
     refreshed = profile.get("refreshed_at")
-    return {"found": True, "profile": profile, "data_as_of": refreshed}
+    return {"found": True, "profile": profile, "data_as_of": refreshed, "provenance": prov}
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -238,16 +286,17 @@ async def get_recent_transactions(
     """Most recent transactions across the customer's accounts (newest first)."""
     sql = (
         "SELECT txn_id, account_id, txn_ts, amount, currency, merchant, category, channel, status "
-        "FROM silver.transactions WHERE customer_id = ? "
+        "FROM {table} WHERE customer_id = ? "
         "AND txn_ts >= current_timestamp - (? * INTERVAL '1' DAY) ORDER BY txn_ts DESC LIMIT ?"
     )
-    txns = await governed(
+    txns, prov = await governed(
         "get_recent_transactions",
         {"customer_id": customer_id, "days": days, "limit": limit},
         call_reference,
+        "silver.transactions",
         sql, [customer_id, days, limit],
     )
-    return {"transactions": txns, "count": len(txns), "window_days": days}
+    return {"transactions": txns, "count": len(txns), "window_days": days, "provenance": prov}
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -256,12 +305,12 @@ async def get_accounts(call_reference: CallRef, customer_id: CustomerId) -> dict
     Use this, not customer_360, when the current state matters (e.g. is the card's account frozen)."""
     sql = (
         "SELECT account_id, product, status, balance, currency, iban, opened_at, updated_at "
-        "FROM silver.accounts WHERE customer_id = ? ORDER BY product, account_id LIMIT 20"
+        "FROM {table} WHERE customer_id = ? ORDER BY product, account_id LIMIT 20"
     )
-    accounts = await governed(
-        "get_accounts", {"customer_id": customer_id}, call_reference, sql, [customer_id]
+    accounts, prov = await governed(
+        "get_accounts", {"customer_id": customer_id}, call_reference, "silver.accounts", sql, [customer_id]
     )
-    return {"accounts": accounts, "count": len(accounts)}
+    return {"accounts": accounts, "count": len(accounts), "provenance": prov}
 
 
 @mcp.tool(annotations=READ_ONLY)
@@ -271,18 +320,19 @@ async def get_complaints(
     """The customer's complaints (open and investigating by default), newest first."""
     sql = (
         "SELECT complaint_id, opened_at, channel, category, status, resolution, summary "
-        "FROM silver.complaints WHERE customer_id = ? "
+        "FROM {table} WHERE customer_id = ? "
         "AND (? OR status IN ('open', 'investigating')) ORDER BY opened_at DESC LIMIT 20"
     )
-    found = await governed(
+    found, prov = await governed(
         "get_complaints",
         {"customer_id": customer_id, "include_resolved": include_resolved},
         call_reference,
+        "silver.complaints",
         sql, [customer_id, include_resolved],
     )
     for c in found:
         c["customer_authored_text"] = {"summary": c.pop("summary")}
-    return {"complaints": found, "count": len(found)}
+    return {"complaints": found, "count": len(found), "provenance": prov}
 
 
 @mcp.custom_route("/healthz", methods=["GET"])

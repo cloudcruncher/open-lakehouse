@@ -74,6 +74,14 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .trace .ok { color: var(--ok); }
 .trace .denied, .trace .error { color: var(--bad); }
 .trace .unavailable { color: var(--warn); }
+.xray { margin-top: 6px; font-size: 12px; }
+.xray summary { color: var(--cyan); cursor: pointer; }
+.xray .steps { list-style: none; margin: 8px 0 0; padding: 0 0 0 10px; border-left: 2px solid var(--line); display: grid; gap: 8px; }
+.xray .steps li { position: relative; display: grid; gap: 1px; padding-left: 8px; }
+.xray .steps li::before { content: ""; position: absolute; left: -16px; top: 5px; width: 9px; height: 9px; border-radius: 50%; background: var(--cyan); }
+.xray .steps b { color: var(--text); font-weight: 600; font-size: 12px; }
+.xray .steps span { color: var(--muted); font-family: ui-monospace, Menlo, monospace; font-size: 11px; word-break: break-all; }
+.trace li .xray { grid-column: 1 / -1; font-family: inherit; }
 .fresh { font-size: 11px; color: var(--muted); margin-top: 6px; }
 @media (max-width: 1100px) { .grid { grid-template-columns: 1fr 1fr; height: auto; } }
 @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }

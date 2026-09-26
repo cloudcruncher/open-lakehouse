@@ -52,6 +52,9 @@ out=$(agent alice get_customer_360 '{"call_reference":"VERIFY-1","customer_id":"
 expect_contains "alice's agent gets customer 360" "$out" '"found": true'
 expect_contains "agent inherits alice's masks" "$out" '"phone": "\*\*\*\*\*\*\*'
 expect_contains "customer free text isolated as untrusted" "$out" "customer_authored_text"
+expect_contains "answer pinned to an Iceberg snapshot (time-travel reproducible)" "$out" '"pinned_to_snapshot": true'
+expect_contains "answer carries OPA's decision for alice" "$out" "brand IN ('Meridian')"
+expect_contains "answer linked to its audit row" "$out" '"seq": [0-9][0-9]*'
 out=$(agent alice get_customer_360 '{"call_reference":"VERIFY-2","customer_id":"C0000002"}')
 expect_contains "alice's agent cannot see another brand's customer" "$out" '"found": false'
 out=$(agent carol get_recent_transactions '{"call_reference":"VERIFY-3","customer_id":"C0000052"}')

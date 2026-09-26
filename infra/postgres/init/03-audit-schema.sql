@@ -83,4 +83,6 @@ END $$;
 
 GRANT USAGE ON SCHEMA audit TO audit_writer;
 GRANT INSERT ON audit.tool_calls TO audit_writer;
+-- Read back only its own row's number and chain hash (provenance), never the content.
+GRANT SELECT (seq, row_hash) ON audit.tool_calls TO audit_writer;
 GRANT EXECUTE ON FUNCTION audit.verify_chain() TO audit_writer;
