@@ -240,7 +240,7 @@ footer { border-top: 1px solid var(--line); padding-block: 28px 48px; color: var
     <a href="#demo">Demo</a><a href="#architecture">Architecture</a><a href="#proof">Proof</a><a href="#chaos">Chaos</a><a href="#scale">Scale</a><a href="https://github.com/cloudcruncher/open-lakehouse">GitHub</a>
   </nav>
   <div class="badges" aria-label="Latest CI results">
-    <span class="badge">ci <b>passing</b></span><span class="badge">e2e <b>54/54</b></span><span class="badge">release <b>signed</b></span>
+    <span class="badge">ci <b>passing</b></span><span class="badge">e2e <b>55/55</b></span><span class="badge">release <b>signed</b></span>
   </div>
 </header>
 
@@ -252,7 +252,7 @@ footer { border-top: 1px solid var(--line); padding-block: 28px 48px; color: var
     <p class="lede">An open lakehouse (Iceberg, Polaris, Trino, OPA, Kafka, Spark) built around one hard consumer: an AI assistant on a bank colleague's live customer call. The assistant is the demo. The platform underneath is the point, so every answer shows how the platform produced it.</p>
     <div class="hero-stats">
       <div><b class="num">~10 s</b><span>source commit to visible for a colleague (CDC)</span></div>
-      <div><b class="num">54</b><span>end-to-end checks on every push, from an empty machine</span></div>
+      <div><b class="num">55</b><span>end-to-end checks on every push, from an empty machine</span></div>
       <div><b class="num">11/11</b><span>components killed and recovered with no data lost</span></div>
     </div>
     <div class="cta">
@@ -326,7 +326,7 @@ make live-demo</pre>
     <div>
       <h3>An analyst on the same tables</h3>
       <ol>
-        <li>Carol queries gold in Trino or Grafana. She gets aggregates across every brand and no way to identify anyone.</li>
+        <li>Carol queries gold in Superset SQL Lab, Trino or Grafana, always as herself. She gets aggregates across every brand and no way to identify anyone.</li>
         <li>She can't infer a hidden column by filtering on it: masks apply before predicates.</li>
         <li>"What did the assistant see at 10:26?" is one query: any answer's snapshot id reproduces it exactly.</li>
         <li>Marquez shows where <code>customer_360</code> came from. Dagster shows the WAP checks that had to pass before it was published.</li>
@@ -412,6 +412,7 @@ make sql U=carol Q="SELECT * FROM lakehouse.silver.accounts"  <span class="c"># 
         <tr><td>Tamper-evident audit</td><td>Hash chain verified; DELETE on the audit log is refused; denied calls are audited too</td><td class="res">pass</td></tr>
         <tr><td>Bad data never reaches silver</td><td>ODCS contracts, quarantine with reasons, WAP publish only after checks; late parents are retried, not dropped</td><td class="res">0 violations</td></tr>
         <tr><td>Safe AI guidance</td><td>Offline eval gate: intent/vulnerability/risk recall, 8 scripted calls, zero ungrounded cards; injection rejected before any SQL</td><td class="res">8/8 · 0 ungrounded</td></tr>
+        <tr><td>Raw data for platform admins only</td><td>Colleagues are refused bronze; the admin reads bronze but every whole-record payload is NULL, including in quarantine; contracts declare the tag</td><td class="res">pass</td></tr>
         <tr><td>Operable</td><td>Every scrape target up (Trino via a machine identity), 20 SLO and burn-rate rules loaded, dashboards from code, Dagster behind SSO</td><td class="res">pass</td></tr>
         <tr><td>Supply chain</td><td>Actions pinned by SHA, gitleaks over full history, Trivy, SBOM + provenance, cosign keyless signatures on GHCR images</td><td class="res">signed</td></tr>
       </tbody>
@@ -482,8 +483,8 @@ make sql U=carol Q="SELECT * FROM lakehouse.silver.accounts"  <span class="c"># 
       <pre class="cmd"><span class="c"># Docker with ~12 GB, uv, make</span>
 git clone https://github.com/cloudcruncher/open-lakehouse
 cd open-lakehouse
-make demo        <span class="c"># up, seed, pipelines, 54 checks</span>
-make urls        <span class="c"># console, Grafana, Dagster, lineage</span>
+make demo        <span class="c"># up, seed, pipelines, 55 checks</span>
+make urls        <span class="c"># console, Grafana, Dagster, lineage, SQL workbench</span>
 make live-demo   <span class="c"># play every demo call as alice</span>
 make chaos       <span class="c"># break it on purpose</span></pre>
       <div class="adrs" aria-label="Architecture decision records">
@@ -491,7 +492,8 @@ make chaos       <span class="c"># break it on purpose</span></pre>
         <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/adr/0003-agents-act-on-behalf-of-colleagues.md"><span>0003</span>Agents act on behalf of colleagues</a>
         <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/adr/0006-cdc-streaming-with-a-single-writer-lease.md"><span>0006</span>CDC streaming with a single-writer lease</a>
         <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/adr/0007-live-call-assist-model-proposes-policy-disposes.md"><span>0007</span>The model proposes, policy disposes</a>
-        <a href="https://github.com/cloudcruncher/open-lakehouse/tree/main/docs/adr"><span>all</span>Nine decision records</a>
+        <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/adr/0011-sql-workbench-queries-as-the-colleague.md"><span>0011</span>The SQL workbench queries as the colleague</a>
+        <a href="https://github.com/cloudcruncher/open-lakehouse/tree/main/docs/adr"><span>all</span>Eleven decision records</a>
       </div>
     </div>
     <div>
@@ -550,17 +552,17 @@ make chaos       <span class="c"># break it on purpose</span></pre>
     dbz:     { x: 184, y: 60,  t: "Debezium", s: "3.6.3 · pgoutput", ver: "quay.io/debezium/connect:3.6.3.Final", role: "Reads the WAL and publishes one change event per row change, with the source LSN, to Kafka.", why: "Log-based CDC is ordered, complete and catches deletes, unlike polling by timestamp. snapshot.mode=no_data avoids re-reading history already in bronze.", proof: "Connector and task RUNNING (verify). Killed in chaos: change made during the outage still arrived; 29 s to recover." },
     kafka:   { x: 184, y: 195, t: "Kafka", s: "4.3.1 · KRaft", ver: "apache/kafka:4.3.1", role: "Durable log for CDC topics and call transcripts; topics declared up front by kafka-init.", why: "Decouples source, stream and agent; replayable; one consumer group per purpose.", proof: "Killed in chaos: reads kept serving, no loss; 30 s to recover." },
     spark:   { x: 184, y: 330, t: "Spark stream", s: "10 s micro-batch", ver: "Spark 3.5 · Iceberg 1.11", role: "Every 10 s: append raw changes to bronze.cdc_events (idempotent by batch id), then per entity apply the silver contract and MERGE. Orphans wait for their parent instead of being dropped.", why: "Micro-batches give exactly-once effect with simple operations; Flink is the upgrade path if sub-second is needed.", proof: "Freshness < 60 s asserted, ~10 s measured. Holds the silver single-writer lease, so batch defers to it." },
-    bronze:  { x: 350, y: 60,  t: "bronze", s: "raw changelog", ver: "Iceberg v2 · zstd", role: "Immutable record of what the source said: CDC events and batch JDBC extracts.", why: "Replay and audit. Nobody reads bronze through SQL, not even an admin (Polaris grants).", proof: "admin cannot read bronze via SQL (verify)." },
+    bronze:  { x: 350, y: 60,  t: "bronze", s: "raw changelog", ver: "Iceberg v2 · zstd", role: "Immutable record of what the source said: CDC events and batch JDBC extracts.", why: "Replay, audit and ingestion debugging. Only platform admins may query it, and whole-record payloads stay NULL even for them (ADR 10).", proof: "Colleagues denied bronze; admin reads bronze with every raw payload NULL (verify)." },
     silver:  { x: 350, y: 150, t: "silver", s: "contract · MERGE", ver: "Iceberg v2 · MERGE", role: "Conformed, typed, deduplicated entities. Brand denormalised onto every row so row filters prune cheaply.", why: "One place where the data contract holds. Bad rows go to ops.quarantine with reasons; late children retry.", proof: "No contract-violating rows reached silver (verify)." },
     gold:    { x: 350, y: 240, t: "gold", s: "customer_360", ver: "Iceberg v2 · WAP", role: "The data product: one row per customer, published through write-audit-publish only after checks pass.", why: "Consumers read a table that is always consistent; failed checks never become visible.", proof: "Row count equals silver customers; gold waits for the stream to catch up before it builds." },
     polaris: { x: 350, y: 330, t: "Polaris", s: "REST catalog", ver: "apache/polaris:1.7.0", role: "Catalog and first authorization layer. Vends short-lived, table-scoped storage credentials; engines never hold storage keys.", why: "An open REST catalog any engine can use; grants per principal; credential vending.", proof: "Killed in chaos: failed closed; 8 s to recover." },
     rustfs:  { x: 350, y: 405, t: "Object storage", s: "RustFS (S3 API)", ver: "rustfs/rustfs:1.0.0", role: "Parquet data and Iceberg metadata. Stands in for S3 or ADLS.", why: "S3-compatible and light enough for a laptop; nothing depends on it being RustFS.", proof: "Killed in chaos: failed closed; 12 s to recover." },
     trino:   { x: 535, y: 60,  t: "Trino", s: "483 · JWT", ver: "trinodb/trino:483", role: "The only SQL door for people and agents. Authenticates Keycloak JWTs and asks OPA about every table, row and column.", why: "One enforcement point for BI, notebooks and agents alike.", proof: "Writes via Trino denied (verify). Killed in chaos: failed closed; 17 s to recover." },
-    opa:     { x: 650, y: 60,  t: "OPA", s: "policy as code", ver: "openpolicyagent/opa:1.21.0", role: "Policy as code: brand row filters and PII masks by tag and persona, default deny. The gateway asks it the same questions to explain each answer.", why: "Rules live in Rego with 25 unit tests, not in each app.", proof: "Policy tests 25/25; policy tags agree with data contracts. Killed in chaos: failed closed; 12 s." },
+    opa:     { x: 650, y: 60,  t: "OPA", s: "policy as code", ver: "openpolicyagent/opa:1.21.0", role: "Policy as code: brand row filters and PII masks by tag and persona, default deny. The gateway asks it the same questions to explain each answer.", why: "Rules live in Rego with 32 unit tests, not in each app.", proof: "Policy tests 32/32; policy tags agree with data contracts. Killed in chaos: failed closed; 12 s." },
     mcp:     { x: 535, y: 150, t: "MCP gateway", s: "on-behalf-of", ver: "platform image", role: "Governed tools for agents. Exchanges the colleague's token (RFC 8693), pins each query to a snapshot, rate limits, circuit breaker, and writes a hash-chained audit row.", why: "Agents get exactly the colleague's rights and nothing more; every access is explainable afterwards.", proof: "Unauthenticated call rejected, purpose mandatory, injection rejected before SQL, answers pinned and audited (verify)." },
-    kc:      { x: 650, y: 150, t: "Keycloak", s: "SSO · exchange", ver: "quay.io/keycloak/keycloak:26.7.4", role: "Identity for colleagues, machines and UIs (PKCE for the console, SSO for Grafana, Dagster and Marquez).", why: "One identity across SQL, agents and tools, so policy can key on the person.", proof: "Killed in chaos: sign-in unavailable, nothing served unauthenticated; 27 s." },
+    kc:      { x: 650, y: 150, t: "Keycloak", s: "SSO · exchange", ver: "quay.io/keycloak/keycloak:26.7.4", role: "Identity for colleagues, machines and UIs (PKCE for the console, SSO for Grafana, Superset, Dagster and Marquez).", why: "One identity across SQL, agents and tools, so policy can key on the person.", proof: "Killed in chaos: sign-in unavailable, nothing served unauthenticated; 27 s." },
     assist:  { x: 535, y: 250, t: "Live Call Assist", s: "per-call agent", ver: "platform image", role: "Consumes transcripts, extracts signals (rules, plus Claude when a key is set), plans tool calls with fixed policy, grounds every card in evidence, and shows the platform x-ray.", why: "The model proposes; policy disposes. No free-form tool use, no ungrounded facts on screen.", proof: "Eval gate 8/8, zero ungrounded cards. Killed in chaos: console only; 4 s." },
-    bi:      { x: 650, y: 250, t: "Analysts · BI", s: "Trino · Grafana", ver: "grafana/grafana:13.2.2", role: "Carol's view: aggregates across brands with PII masked or null; SLO dashboards generated from code.", why: "Same tables and same policy as the agent, a different consumer.", proof: "carol denied silver; cannot infer masked columns (verify)." },
+    bi:      { x: 650, y: 250, t: "Analysts · BI", s: "Superset · Grafana", ver: "apache/superset:6.1.0 · grafana/grafana:13.2.2", role: "Carol's view: aggregates across brands with PII masked or null. Superset SQL Lab sends each colleague's own Keycloak token to Trino (ADR 11); SLO dashboards are generated from code.", why: "Same tables and same policy as the agent, a different consumer. No shared BI service account.", proof: "carol denied silver; cannot infer masked columns (verify)." },
     ops:     { x: 535, y: 350, t: "Dagster · Marquez", s: "jobs · lineage", ver: "Dagster 1.13 · Marquez 0.51", role: "Batch pipelines with WAP checks as asset checks; OpenLineage from every Spark job into Marquez.", why: "Operators see what ran, what was checked and where data came from.", proof: "13 assets, 19 WAP checks, 3 schedules; gold traces back to silver (verify)." },
     obs:     { x: 650, y: 350, t: "Prometheus", s: "SLOs · burn rate", ver: "prom/prometheus:v3.15.0", role: "Scrapes every service (Trino with a machine identity OPA limits to system metrics). SLO recording rules and multi-window burn-rate alerts.", why: "Alert on user-visible pain (freshness, tool errors, latency), not on CPU.", proof: "Every scrape target up; 20 rules loaded (verify)." },
   };

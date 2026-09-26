@@ -84,6 +84,7 @@ urls: ## Where everything is (all bound to localhost only)
 	@echo "  Grafana (SSO)             http://localhost:3001"
 	@echo "  Dagster (SSO, ops_admin)  http://localhost:3002"
 	@echo "  Lineage / Marquez (SSO)   http://localhost:3003"
+	@echo "  SQL workbench / Superset (SSO) http://localhost:3004"
 	@echo "  Prometheus                http://localhost:9090"
 	@echo "  Keycloak                  http://localhost:8280"
 	@echo "  Trino (TLS + JWT)         https://localhost:8443"

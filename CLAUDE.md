@@ -6,11 +6,12 @@ Live Call Assist. Open work is in [docs/next-steps.md](docs/next-steps.md); read
 
 ## Commands
 - `make demo`: start everything, seed, run pipelines, then `make verify`. Safe to re-run.
-- `make verify`: 54 end-to-end checks. Run after any change that touches the running stack.
+- `make verify`: 55 end-to-end checks. Run after any change that touches the running stack.
 - `make test` (OPA + Python unit tests), `make lint`, `make evals`, `make contracts`.
 - `make sql U=alice Q="..."` and `make agent U=alice T=get_customer_360 A='{...}'` run as a colleague.
-- `make urls` lists every portal. Personas: alice (contact centre), bob (complaints),
-  carol (analyst), ops_admin (platform admin). Access rules: `infra/opa/data/entitlements.json`.
+- `make urls` lists every portal (SQL workbench: Superset SQL Lab on `localhost:3004`).
+  Personas: alice (contact centre), bob (complaints), carol (analyst), ops_admin (platform
+  admin). Access rules: `infra/opa/data/entitlements.json`.
 
 ## Conventions
 - Python via uv only. Work on a branch, open a PR; CI (`ci`, `e2e`) must be green before merging.
@@ -31,6 +32,12 @@ Live Call Assist. Open work is in [docs/next-steps.md](docs/next-steps.md); read
 - PySpark streaming offsets arrive as dicts, not JSON strings.
 - MinIO images are gone from Docker Hub, hence RustFS. Polaris needs `kmsUnavailable` on RustFS.
 - OPA: `x in {ruleRef, "lit"}` misbehaves; use literal sets.
+- Bronze is readable by ops_admin only; `payload` columns (tag `pii.raw_record`) are NULL below
+  full PII clearance. A new bronze/ops table needs a contract and tags, or `make contracts` misses it.
+- Superset queries Trino with each colleague's own OAuth2 token (no service account). Config:
+  `infra/superset/`. Portals must be opened on `localhost`, not `127.0.0.1` (Keycloak redirect URIs).
+- `make sql` passes the query through make, so `$` is eaten: for `"table$snapshots"` use
+  `scripts/trino-sql.sh ops_admin '...'` directly.
 - `docker kill` bypasses restart policies; `make heal` reconciles.
 - Counter series only exist once incremented: PromQL over error counters needs `or vector(0)`.
 - GitHub: poll `gh` sparingly (secondary rate limit). The e2e workflow cancels superseded runs,

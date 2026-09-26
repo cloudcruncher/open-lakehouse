@@ -2,7 +2,8 @@
 # acting on behalf of a colleague all hit the same rules.
 #
 #   * default deny: anything not explicitly allowed is refused
-#   * schema access by persona (analysts never see silver; nobody sees bronze via SQL)
+#   * schema access by persona (analysts never see silver; only platform admins see
+#     bronze, and never the raw record payloads inside it)
 #   * row filters: colleagues only see customers of the brands they serve
 #   * column masks: PII is masked by tag and persona clearance, not by table
 #
@@ -72,7 +73,14 @@ allowed_catalog(name) if {
 
 allowed_schema(catalog, schema) if {
 	catalog == "lakehouse"
+	schema != "bronze"
 	schema in persona.schemas
+}
+
+# Bronze has no brand filter (brand is added in silver), so it needs every brand too.
+allowed_schema("lakehouse", "bronze") if {
+	"bronze" in persona.schemas
+	"*" in profile.brands
 }
 
 allowed_schema(catalog, schema) if {
@@ -213,3 +221,7 @@ mask("pii.name", col, _) := sprintf("concat(substr(%s, 1, 1), '.')", [col]) if p
 mask("pii.location", col, _) := sprintf("split_part(%s, ' ', 1)", [col]) if persona.pii != "full"
 
 mask("pii.financial_id", col, _) := sprintf("concat('****', substr(%s, -4))", [col]) if persona.pii != "full"
+
+# A whole source record serialised as text (raw change events, quarantined rows): no
+# column mask can reach inside it, so it is all-or-nothing and needs full PII clearance.
+mask("pii.raw_record", _, col_type) := typed_null(col_type) if persona.pii != "full"

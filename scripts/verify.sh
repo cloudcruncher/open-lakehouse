@@ -42,7 +42,9 @@ expect_contains "carol cannot infer vulnerability by filtering on masked column"
 
 echo "▸ Least privilege (defence in depth)"
 expect_contains "carol denied silver (OPA)" "$(sql carol "SELECT 1 FROM lakehouse.silver.customers LIMIT 1")" "PERMISSION_DENIED"
-expect_contains "admin cannot read bronze via SQL (Polaris)" "$(sql ops_admin "SELECT 1 FROM lakehouse.bronze.customers LIMIT 1")" "ERROR"
+expect_contains "colleagues denied bronze (OPA)" "$(sql bob "SELECT 1 FROM lakehouse.bronze.cdc_events LIMIT 1")" "PERMISSION_DENIED"
+q="SELECT count(*) FROM lakehouse.bronze.cdc_events WHERE payload IS NOT NULL"
+expect_contains "admin reads bronze, raw payloads always NULL" "$(last "$(sql ops_admin "$q")")" "^0$"
 expect_contains "writes via Trino denied" "$(sql alice "DELETE FROM lakehouse.gold.customer_360")" "PERMISSION_DENIED"
 
 echo "▸ Agent gateway (MCP, on-behalf-of)"

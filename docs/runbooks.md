@@ -49,6 +49,20 @@ upstream release.
 **Mitigate:** contact the source owner (see the contract's `team`). Good rows keep
 flowing; quarantined rows can be replayed from `bronze.cdc_events` once they're fixed.
 
+## missing-change
+Not an alert: a colleague says a change made in core banking isn't in silver.
+**Means:** the change never arrived, was quarantined, or is parked waiting for its parent.
+**Confirm** as `ops_admin`, with the record's key (here a transaction id), in this order:
+1. Did it arrive? `make sql U=ops_admin Q="SELECT entity, op, source_lsn, ingested_at FROM lakehouse.bronze.cdc_events WHERE record_key = 'T…' ORDER BY source_lsn"`.
+   No rows: look upstream (Debezium, see [cdc-stalled](#cdc-stalled)).
+2. Was it rejected? `make sql U=ops_admin Q="SELECT reasons, quarantined_at FROM lakehouse.ops.quarantine WHERE record_key = 'T…'"`
+3. Is it waiting for its parent? `make sql U=ops_admin Q="SELECT entity, first_seen_at FROM lakehouse.ops.cdc_pending WHERE record_key = 'T…'"`
+
+The `payload` column is NULL for platform admins in all three tables: record contents need
+full PII clearance ([ADR 10](adr/0010-platform-admins-read-bronze-without-payloads.md)).
+**Mitigate:** quarantined: see [quarantine](#quarantine). Pending: it is retried until its
+parent arrives, then quarantined after `CDC_ORPHAN_GRACE` (15 min).
+
 ## replication-slot
 **Means:** the CDC slot has no consumer, so Postgres is retaining WAL. At
 `max_slot_wal_keep_size` (2 GB) the slot is invalidated to protect the source.

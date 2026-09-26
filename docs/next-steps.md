@@ -1,8 +1,10 @@
 # Next steps
 
-State on 26 Sep 2026, after a walkthrough of every portal as each persona. Fixed that day (PR #5):
-Dagster open to any colleague, Grafana memory and SSO-only login, the nightly silver lease race,
-SLO panels showing "No data", and the quarantine-rate axis. `make verify`: 54/54.
+State on 26 Sep 2026. Fixed that day: Dagster open to any colleague, Grafana memory and SSO-only
+login, the nightly silver lease race, SLO panels showing "No data", and the quarantine-rate axis
+(PR #5). Then (PR #7): a SQL workbench (Superset SQL Lab) that queries Trino as each colleague,
+bronze readable by platform admins with raw payloads NULL (which also closed quarantine payloads
+to them), `SHOW TABLES` working, and sign-in via `127.0.0.1` redirected. `make verify`: 55/55.
 
 Ordered by value. Each item says where to start and how to know it is done.
 
@@ -53,7 +55,30 @@ handlers.
   sign-in) or a Keycloak client role on `agent-console`.
 - Done when: carol gets a clear "not for your role" page; alice and bob are unaffected.
 
-## 7. Smaller items
+## 7. Prove the SQL workbench in `make verify`
+Superset querying as each colleague is proven by the portal tour and a manual API run, not by
+`verify`, so CI would not catch a regression (for example a shared connection added by hand).
+- Where: `scripts/verify.sh` or a small Playwright check. Sign in as alice and carol, authorize
+  the Lakehouse connection, run one query through `/api/v1/sqllab/execute/` each.
+- Done when: alice gets masked phones and Meridian only, carol is denied silver, and OPA's
+  decision log shows each colleague (never a Superset identity).
+
+## 8. Break-glass for raw payloads
+Platform admins see bronze and quarantine metadata, but a record's contents need full PII
+clearance ([ADR 10](adr/0010-platform-admins-read-bronze-without-payloads.md)). Triage sometimes
+needs the contents.
+- Where: OPA (a time-boxed grant keyed on a ticket id), Keycloak (step-up), the audit log.
+- Done when: ops_admin can read one payload for a stated reason for a limited time, and the
+  access is in the audit chain.
+
+## 9. Smaller items
+- Grafana, Dagster and Marquez opened on `127.0.0.1` send Keycloak a `localhost` callback, so the
+  sign-in cookie lands on the other host and can fail. Console and Superset now redirect to
+  `localhost`; do the same (or document `localhost` only) for the rest.
+- 16,811 transactions in the last 30 days have an empty `merchant` (about £21M, probably transfers).
+  Decide whether that is valid source data; if so, label it in silver or gold.
+- Memory headroom: `cdc-connect` ran at ~739 of 768 MiB and Grafana at ~980 MiB of 1 GiB.
+  Check for OOM restarts and raise the caps if needed.
 - Keycloak account console (`/realms/bank/account`) shows "Something went wrong". No persona needs
   it; either fix or disable the account client.
 - Prometheus (`:9090`) has no login. It is loopback-only; in a real deployment put it behind the
@@ -69,4 +94,7 @@ handlers.
 - Persona walkthrough page (access matrix, same query as four colleagues, a day in each job):
   private artifact, link held by the repo owner.
 - `uv run scripts/portal_tour.py`: signs in to every portal as each persona and saves a screenshot
-  and outcome per step to `.tour/results.json`. Re-run after any access change.
+  and outcome per step to `.tour/results.json`. Re-run after any access change
+  (`uv run scripts/portal_tour.py superset` for the workbench only).
+- [Runbooks → missing-change](runbooks.md#missing-change): trace a change through bronze,
+  quarantine and pending.
