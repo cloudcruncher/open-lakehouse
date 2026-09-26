@@ -121,6 +121,9 @@ if running prometheus; then
   [[ "$down" == 0 ]] && ok "every scrape target up (incl. Trino via machine identity + OPA)" || bad "every scrape target up" "$down down"
   n=$(curl -fsS localhost:9090/api/v1/rules | python3 -c 'import sys,json; print(sum(len(g["rules"]) for g in json.load(sys.stdin)["data"]["groups"]))')
   (( n >= 20 )) && ok "SLO recording + burn-rate alert rules loaded ($n)" || bad "SLO rules loaded" "$n"
+  cap=$(curl -fsS localhost:9090/api/v1/query --data-urlencode 'query=max(assist_llm_budget_usd)' | python3 -c 'import sys,json; r=json.load(sys.stdin)["data"]["result"]; print(r[0]["value"][1] if r else "none")')
+  rules=$(curl -fsS localhost:9090/api/v1/rules | grep -c AssistAIBudgetNearlySpent)
+  [[ "$cap" != none && "$rules" -ge 1 ]] && ok "AI spend cap exported and alerted on (cap \$$cap/day)" || bad "AI spend cap exported and alerted on" "cap=$cap rule=$rules"
   gpw=$(grep '^GRAFANA_ADMIN_PASSWORD=' .env | cut -d= -f2)
   n=$(curl -fsS -u "admin:$gpw" "localhost:3001/api/search?tag=open-lakehouse" | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')
   (( n >= 3 )) && ok "Grafana dashboards provisioned from code ($n)" || bad "Grafana dashboards provisioned" "$n"

@@ -89,6 +89,16 @@ groups:
         expr: increase(assist_cards_withheld_total[15m]) > 0
         labels: { severity: ticket }
         annotations: { summary: "The grounding guardrail withheld a card: check for a template or model regression" }
+      - alert: AssistAIBudgetNearlySpent
+        expr: max(assist_llm_spend_usd_today) >= 0.8 * max(assist_llm_budget_usd)
+        labels: { severity: ticket }
+        annotations: { summary: "AI spend today is past 80% of the daily cap; at 100% the assistant falls back to rules", runbook: docs/runbooks.md#ai-budget }
+      - alert: AssistAIDegraded
+        # Budget fallbacks are the cap working, not a fault; everything else non-ok is.
+        expr: (sum(rate(assist_llm_extractions_total{outcome!~"ok|budget"}[10m])) or vector(0)) / clamp_min(sum(rate(assist_llm_extractions_total[10m])) or vector(0), 1e-9) > 0.5
+        for: 5m
+        labels: { severity: ticket }
+        annotations: { summary: "Most caller lines fall back to rules: the model is failing (key, credit, timeouts)", runbook: docs/runbooks.md#ai-degraded }
 
   - name: platform
     rules:

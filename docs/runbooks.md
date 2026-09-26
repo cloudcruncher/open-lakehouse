@@ -70,6 +70,27 @@ parent arrives, then quarantined after `CDC_ORPHAN_GRACE` (15 min).
 was invalidated: re-create the connector, then run a batch backfill (`make pipeline`
 with the stream stopped) to close the gap.
 
+## ai-budget
+**Means:** today's estimated model spend is past 80% of `CALL_ASSIST_DAILY_BUDGET_USD`
+([ADR 12](adr/0012-ai-call-note-and-a-spend-cap.md)). At 100% the assistant stops calling
+the model until midnight UTC: lines are understood by rules and notes use the template.
+**Colleagues see:** nothing yet; at the cap, `rules only · Claude not used: daily AI budget
+reached` under caller lines and template call notes.
+**Confirm:** Grafana → *Live Call Assist* → "AI usage and cost"; `curl -s localhost:8090/config`.
+Is it more calls than usual, or more cost per call (prompt cache hit rate falling)?
+**Mitigate:** if the cache hit rate dropped, check the service log for "prompt not cached".
+Raise the cap only deliberately (set the variable, `docker compose up -d call-assist`).
+The estimate restarts at 0 when the service restarts; the provider's console is the bill.
+
+## ai-degraded
+**Means:** more than half of caller lines fall back to rules for reasons other than the cap.
+**Colleagues see:** guidance still arrives (rules always run), with less recall on unusual
+phrasing; each line says why Claude was not used.
+**Confirm:** "Model calls by outcome": `auth` (bad or rotated key), `api_error` (often
+"credit balance is too low"), `timeout` (latency panel near 2.5 s), `rate_limited`.
+**Mitigate:** fix the key or credit; for timeouts, check the provider's status page. No
+restart is needed: every line tries the model again.
+
 ## assist-lag
 **Means:** Live Call Assist is behind the transcript stream, so guidance arrives late.
 **Mitigate:** scale `call-assist` replicas (one consumer group; transcripts are keyed by
