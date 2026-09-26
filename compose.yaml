@@ -113,7 +113,7 @@ services:
     mem_limit: 512m
 
   storage-init:
-    image: amazon/aws-cli:2.36.8
+    image: amazon/aws-cli:2.37.0
     restart: "no"
     logging: *logging
     networks: [data]
