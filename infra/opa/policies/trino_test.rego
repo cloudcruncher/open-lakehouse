@@ -82,9 +82,40 @@ test_analyst_cannot_read_silver if {
 	not trino.allow with input as select("carol", "silver", "customers")
 }
 
-# Bronze holds raw, unmasked PII: only pipeline identities reach it, never Trino users.
-test_admin_cannot_read_bronze_via_trino if {
-	not trino.allow with input as select("ops_admin", "bronze", "customers")
+# Platform admins may inspect bronze to debug ingestion; colleagues never see it.
+test_admin_reads_bronze if {
+	trino.allow with input as select("ops_admin", "bronze", "cdc_events")
+}
+
+test_investigator_cannot_read_bronze if {
+	not trino.allow with input as select("bob", "bronze", "cdc_events")
+}
+
+test_analyst_cannot_read_bronze if {
+	not trino.allow with input as select("carol", "bronze", "customers")
+}
+
+# Bronze has no brand filter: a persona limited to some brands never sees it.
+test_bronze_needs_every_brand if {
+	not trino.allow with input as select("ops_admin", "bronze", "cdc_events")
+		with data.entitlements.users.ops_admin.brands as ["Meridian"]
+}
+
+# Raw record payloads can't be column-masked, so they are nulled below full PII clearance.
+test_raw_payload_nulled_for_admin if {
+	mask_for(column("ops_admin", "bronze", "cdc_events", "payload", "varchar")) == "CAST(NULL AS varchar)"
+}
+
+test_quarantine_payload_nulled_for_admin if {
+	mask_for(column("ops_admin", "ops", "quarantine", "payload", "varchar")) == "CAST(NULL AS varchar)"
+}
+
+test_raw_payload_visible_with_full_clearance if {
+	not mask_for(column("bob", "bronze", "cdc_events", "payload", "varchar"))
+}
+
+test_bronze_copy_masks_pii_like_silver if {
+	mask_for(column("ops_admin", "bronze", "customers", "email", "varchar")) == "CAST(NULL AS varchar)"
 }
 
 test_admin_reads_ops if {

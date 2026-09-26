@@ -38,13 +38,16 @@ SECRETS_DIR = Path(os.environ.get("PLATFORM_SECRETS_DIR", "/run/platform-secrets
 
 NAMESPACES = ["bronze", "silver", "gold", "ops"]
 
-# Read access for the query engine: data + listing, never bronze.
+# Read access for the query engine: data + listing. OPA decides which colleague sees what.
 READER_PRIVILEGES = [
     "NAMESPACE_LIST",
     "NAMESPACE_READ_PROPERTIES",
     "TABLE_LIST",
     "TABLE_READ_PROPERTIES",
     "TABLE_READ_DATA",
+    # Trino's SHOW TABLES and information_schema list views alongside tables.
+    "VIEW_LIST",
+    "VIEW_READ_PROPERTIES",
 ]
 
 
@@ -195,10 +198,11 @@ def ensure_roles_and_grants(p: Polaris) -> None:
     grant(p, "lakehouse_writer", {"type": "catalog", "privilege": "CATALOG_MANAGE_CONTENT"})
 
     # Listing top-level namespaces needs a catalog-level grant. It exposes namespace
-    # *names* only; no table metadata or data in bronze becomes reachable.
+    # *names* only.
     grant(p, "lakehouse_reader", {"type": "catalog", "privilege": "NAMESPACE_LIST"})
-    # The query engine reads curated layers only. Bronze is unreachable from SQL.
-    for ns in ["silver", "gold", "ops"]:
+    # Bronze is readable by the engine so platform admins can debug ingestion; OPA keeps it
+    # from everyone else and nulls raw record payloads (tag pii.raw_record).
+    for ns in ["bronze", "silver", "gold", "ops"]:
         for privilege in READER_PRIVILEGES:
             grant(p, "lakehouse_reader", {"type": "namespace", "namespace": [ns], "privilege": privilege})
     log.info("catalog roles and grants ensured")

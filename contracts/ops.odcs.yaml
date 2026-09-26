@@ -1,0 +1,51 @@
+# Data contract for the pipeline's operational tables that hold source records (ODCS v3.2.0).
+# Platform admins read them to triage quarantine and orphaned changes; the record payload
+# itself is PII (pii.raw_record) and is NULL below full clearance.
+apiVersion: v3.2.0
+kind: DataContract
+id: urn:open-lakehouse:contract:ops-pipeline-records
+name: ops_pipeline_records
+version: 1.0.0
+status: active
+tenant: retail-bank
+domain: data-platform
+tags: [ops, quarantine, pii]
+description:
+  purpose: Rows the pipeline set aside, with the reason, so they are never silently dropped.
+  usage: Platform admins triage by entity, key and reason; fixed rows are replayed from bronze.cdc_events.
+  limitations: Payloads are not visible to platform admins; triaging a record's contents needs full clearance.
+schema:
+  - name: quarantine
+    physicalName: lakehouse.ops.quarantine
+    physicalType: table
+    logicalType: object
+    description: Rows that broke the silver contract, with every rule they broke.
+    properties:
+      - { name: run_id, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: entity, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: record_key, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: reasons, logicalType: array, physicalType: array(varchar), required: true, classification: internal }
+      - { name: payload, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.raw_record], description: The rejected row as JSON }
+      - { name: quarantined_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+  - name: cdc_pending
+    physicalName: lakehouse.ops.cdc_pending
+    physicalType: table
+    logicalType: object
+    description: Changes that arrived before their parent record, parked until it does (or the grace period ends).
+    properties:
+      - { name: entity, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: op, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: record_key, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: payload, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.raw_record], description: The parked change as JSON }
+      - { name: source_lsn, logicalType: integer, physicalType: bigint, classification: internal }
+      - { name: source_ts, logicalType: timestamp, physicalType: timestamp(6) with time zone, classification: internal }
+      - { name: kafka_topic, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: kafka_partition, logicalType: integer, physicalType: integer, classification: internal }
+      - { name: kafka_offset, logicalType: integer, physicalType: bigint, classification: internal }
+      - { name: first_seen_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, classification: internal }
+team:
+  name: data-platform
+  members:
+    - { username: data-platform-lead, role: owner }
+support:
+  - { channel: "#data-platform", tool: slack, url: "https://example.invalid/slack/data-platform" }

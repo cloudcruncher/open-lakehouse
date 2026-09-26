@@ -56,6 +56,7 @@
       },
       "platform_admin": {
         "schemas": [
+          "bronze",
           "silver",
           "gold",
           "ops"
@@ -86,6 +87,27 @@
         "phone": "pii.contact",
         "postcode": "pii.location",
         "vulnerability_flag": "special_category"
+      },
+      "bronze.customers": {
+        "first_name": "pii.name",
+        "last_name": "pii.name",
+        "date_of_birth": "pii.dob",
+        "email": "pii.contact",
+        "phone": "pii.contact",
+        "postcode": "pii.location",
+        "vulnerability_flag": "special_category"
+      },
+      "bronze.accounts": {
+        "iban": "pii.financial_id"
+      },
+      "bronze.cdc_events": {
+        "payload": "pii.raw_record"
+      },
+      "ops.quarantine": {
+        "payload": "pii.raw_record"
+      },
+      "ops.cdc_pending": {
+        "payload": "pii.raw_record"
       }
     },
     "brand_scoped_tables": [

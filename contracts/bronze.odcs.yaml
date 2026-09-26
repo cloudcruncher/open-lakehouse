@@ -1,0 +1,107 @@
+# Data contract for the raw (bronze) layer (ODCS v3.2.0). Bronze keeps what the source
+# sent, unvalidated: no quality rules apply here (they run on the way to silver).
+# Only platform admins may query it, to debug ingestion. PII is masked by the same tags
+# as silver, and whole-record payloads (pii.raw_record) are NULL below full clearance.
+apiVersion: v3.2.0
+kind: DataContract
+id: urn:open-lakehouse:contract:bronze-core-banking
+name: bronze_core_banking
+version: 1.0.0
+status: active
+tenant: retail-bank
+domain: core-banking
+tags: [bronze, raw, cdc, pii]
+description:
+  purpose: Immutable record of what the source system sent, for replay and ingestion debugging.
+  usage: Platform admins only. Answers "did this change arrive, when, and in what order?" without exposing record contents.
+  limitations: Unvalidated and not brand-filtered. Not for business use; query silver or gold instead.
+schema:
+  - name: cdc_events
+    physicalName: lakehouse.bronze.cdc_events
+    physicalType: table
+    logicalType: object
+    description: Every change event from the CDC stream, append-only.
+    properties:
+      - { name: entity, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: op, logicalType: string, physicalType: varchar, required: true, classification: internal, description: "c (insert), u (update), d (delete), r (snapshot read)" }
+      - { name: record_key, logicalType: string, physicalType: varchar, required: true, classification: internal }
+      - { name: payload, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.raw_record], description: The whole source row as JSON }
+      - { name: source_lsn, logicalType: integer, physicalType: bigint, classification: internal }
+      - { name: source_ts, logicalType: timestamp, physicalType: timestamp(6) with time zone, classification: internal }
+      - { name: kafka_topic, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: kafka_partition, logicalType: integer, physicalType: integer, classification: internal }
+      - { name: kafka_offset, logicalType: integer, physicalType: bigint, classification: internal }
+      - { name: ingested_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, required: true, classification: internal }
+      - { name: batch_id, logicalType: integer, physicalType: bigint, classification: internal }
+  - name: customers
+    physicalName: lakehouse.bronze.customers
+    physicalType: table
+    logicalType: object
+    description: Batch-path copy of core.customers as extracted.
+    properties:
+      - { name: customer_id, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: brand, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: first_name, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.name] }
+      - { name: last_name, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.name] }
+      - { name: date_of_birth, logicalType: date, physicalType: date, classification: restricted, tags: [pii.dob] }
+      - { name: email, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.contact] }
+      - { name: phone, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.contact] }
+      - { name: postcode, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.location] }
+      - { name: region, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: segment, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: vulnerability_flag, logicalType: boolean, physicalType: boolean, classification: restricted, tags: [special_category] }
+      - { name: created_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, classification: internal }
+      - { name: updated_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, classification: internal }
+  - name: accounts
+    physicalName: lakehouse.bronze.accounts
+    physicalType: table
+    logicalType: object
+    description: Batch-path copy of core.accounts as extracted.
+    properties:
+      - { name: account_id, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: customer_id, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: product, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: iban, logicalType: string, physicalType: varchar, classification: restricted, tags: [pii.financial_id] }
+      - { name: status, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: balance, logicalType: number, physicalType: "decimal(18,2)", classification: confidential }
+      - { name: currency, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: opened_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, classification: internal }
+      - { name: updated_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, classification: internal }
+  - name: transactions
+    physicalName: lakehouse.bronze.transactions
+    physicalType: table
+    logicalType: object
+    description: Batch-path copy of core.transactions as extracted.
+    properties:
+      - { name: txn_id, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: account_id, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: txn_ts, logicalType: timestamp, physicalType: timestamp(6) with time zone, classification: internal }
+      - { name: amount, logicalType: number, physicalType: "decimal(18,2)", classification: confidential }
+      - { name: currency, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: merchant, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: category, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: channel, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: status, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: updated_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, classification: internal }
+  - name: complaints
+    physicalName: lakehouse.bronze.complaints
+    physicalType: table
+    logicalType: object
+    description: Batch-path copy of core.complaints as extracted.
+    properties:
+      - { name: complaint_id, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: customer_id, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: opened_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, classification: internal }
+      - { name: channel, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: category, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: summary, logicalType: string, physicalType: varchar, classification: restricted, tags: [customer_authored] }
+      - { name: status, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: resolution, logicalType: string, physicalType: varchar, classification: internal }
+      - { name: updated_at, logicalType: timestamp, physicalType: timestamp(6) with time zone, classification: internal }
+team:
+  name: data-platform
+  members:
+    - { username: data-platform-lead, role: owner }
+    - { username: core-banking-lead, role: source-owner }
+support:
+  - { channel: "#data-platform", tool: slack, url: "https://example.invalid/slack/data-platform" }
