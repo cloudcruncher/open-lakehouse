@@ -155,6 +155,17 @@ def proxied(port, user, path="/"):
     return fn
 
 
+def superset(user, path):
+    def fn(page):
+        page.goto("http://localhost:3004/login/keycloak")
+        kc_login(page, user)
+        time.sleep(4)
+        page.goto(f"http://localhost:3004{path}")
+        time.sleep(5)
+
+    return fn
+
+
 def plain(url, wait=3):
     def fn(page):
         r = page.goto(url)
@@ -192,6 +203,9 @@ STEPS = {
     "15-prometheus-targets": plain("http://localhost:9090/targets"),
     "16-trino-ui": plain("https://localhost:8443/ui/"),
     "17-mcp-healthz": plain("http://localhost:8000/healthz", 1),
+    "19-superset-sqllab-alice": superset("alice", "/sqllab/"),
+    "20-superset-users-alice": superset("alice", "/users/list/"),
+    "21-superset-users-ops": superset("ops_admin", "/users/list/"),
 }
 
 only = sys.argv[1:]

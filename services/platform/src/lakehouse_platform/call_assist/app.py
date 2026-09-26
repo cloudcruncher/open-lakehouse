@@ -39,7 +39,13 @@ from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from prometheus_client import CONTENT_TYPE_LATEST, Gauge, generate_latest
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from starlette.responses import (
+    FileResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
@@ -317,7 +323,11 @@ async def config(_: Request) -> JSONResponse:
     )
 
 
-async def index_page(_: Request) -> FileResponse:
+async def index_page(request: Request) -> Response:
+    # Keycloak only accepts localhost as the return address (and CORS origin), so a visit
+    # via 127.0.0.1 would fail at sign-in with "Invalid parameter: redirect_uri".
+    if request.url.hostname == "127.0.0.1":
+        return RedirectResponse(str(request.url.replace(hostname="localhost")), status_code=308)
     return FileResponse(STATIC / "index.html", headers={"Cache-Control": "no-store"})
 
 

@@ -10,25 +10,28 @@
 
 -- ---------------------------------------------------------------- roles
 SELECT format('CREATE ROLE %I LOGIN', r)
-FROM unnest(ARRAY['debezium', 'marquez', 'dagster', 'monitoring']) AS r
+FROM unnest(ARRAY['debezium', 'marquez', 'dagster', 'monitoring', 'superset']) AS r
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) \gexec
 
 ALTER ROLE debezium WITH LOGIN REPLICATION PASSWORD :'debezium_password';
 ALTER ROLE marquez  WITH LOGIN PASSWORD :'marquez_password';
 ALTER ROLE dagster  WITH LOGIN PASSWORD :'dagster_password';
+ALTER ROLE superset WITH LOGIN PASSWORD :'superset_password';
 -- Metrics only: pg_monitor reads statistics and replication-slot state, never table data.
 ALTER ROLE monitoring WITH LOGIN PASSWORD :'monitoring_password';
 GRANT pg_monitor TO monitoring;
 
 -- ------------------------------------------------------------ databases
 SELECT format('CREATE DATABASE %I OWNER %I', d, d)
-FROM unnest(ARRAY['marquez', 'dagster']) AS d
+FROM unnest(ARRAY['marquez', 'dagster', 'superset']) AS d
 WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = d) \gexec
 
 REVOKE ALL ON DATABASE marquez FROM PUBLIC;
 REVOKE ALL ON DATABASE dagster FROM PUBLIC;
+REVOKE ALL ON DATABASE superset FROM PUBLIC;
 GRANT CONNECT ON DATABASE marquez TO marquez;
 GRANT CONNECT ON DATABASE dagster TO dagster;
+GRANT CONNECT ON DATABASE superset TO superset;
 GRANT CONNECT ON DATABASE corebank TO debezium;
 
 -- ---------------------------------------------------- CDC on the source

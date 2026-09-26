@@ -8,7 +8,7 @@
 #
 # Profiles:  (default) platform  |  jobs      -> Spark pipelines, seeding
 #            streaming -> Kafka, Debezium CDC, the CDC stream, Live Call Assist
-#            ops       -> Dagster, Prometheus, Grafana, Marquez (lineage)
+#            ops       -> Dagster, Prometheus, Grafana, Marquez (lineage), Superset
 
 name: open-lakehouse
 
@@ -81,13 +81,14 @@ services:
       MARQUEZ_DB_PASSWORD: ${MARQUEZ_DB_PASSWORD:?}
       DAGSTER_DB_PASSWORD: ${DAGSTER_DB_PASSWORD:?}
       MONITORING_DB_PASSWORD: ${MONITORING_DB_PASSWORD:?}
+      SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD:?}
     volumes: [./infra/postgres/reconcile.sql:/reconcile.sql:ro]
     entrypoint: ["/bin/sh", "-c"]
     command:
       - >-
         psql -q -d postgres -v debezium_password="$$DEBEZIUM_DB_PASSWORD"
         -v marquez_password="$$MARQUEZ_DB_PASSWORD" -v dagster_password="$$DAGSTER_DB_PASSWORD"
-        -v monitoring_password="$$MONITORING_DB_PASSWORD"
+        -v monitoring_password="$$MONITORING_DB_PASSWORD" -v superset_password="$$SUPERSET_DB_PASSWORD"
         -f /reconcile.sql && echo "database reconciled"
 
   # ------------------------------------------------------------ object storage
@@ -227,6 +228,7 @@ services:
       PROMETHEUS_CLIENT_SECRET: ${PROMETHEUS_CLIENT_SECRET:?}
       DAGSTER_UI_CLIENT_SECRET: ${DAGSTER_UI_CLIENT_SECRET:?}
       LINEAGE_UI_CLIENT_SECRET: ${LINEAGE_UI_CLIENT_SECRET:?}
+      SUPERSET_CLIENT_SECRET: ${SUPERSET_CLIENT_SECRET:?}
       DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD:?}
       JAVA_OPTS_KC_HEAP: "-XX:MaxRAMPercentage=65"
     volumes:
@@ -254,6 +256,7 @@ services:
       PROMETHEUS_CLIENT_SECRET: ${PROMETHEUS_CLIENT_SECRET}
       DAGSTER_UI_CLIENT_SECRET: ${DAGSTER_UI_CLIENT_SECRET:?}
       LINEAGE_UI_CLIENT_SECRET: ${LINEAGE_UI_CLIENT_SECRET:?}
+      SUPERSET_CLIENT_SECRET: ${SUPERSET_CLIENT_SECRET:?}
       DEMO_USER_PASSWORD: ${DEMO_USER_PASSWORD}
     volumes: [./infra/keycloak/bank-realm.json:/etc/keycloak/bank-realm.json:ro]
     entrypoint: ["keycloak-reconcile"]
@@ -786,3 +789,37 @@ services:
       OAUTH2_PROXY_EMAIL_DOMAINS: bank.example
     ports: ["127.0.0.1:3003:4180"]
     mem_limit: 64m
+
+  # ============================================ SQL workbench (profile: ops)
+  # Superset SQL Lab: browse and query the lakehouse in a browser. Keycloak sign-in only.
+  superset:
+    <<: *service
+    profiles: [ops]
+    build: ./infra/superset
+    image: open-lakehouse/superset:dev
+    networks: [meta, edge]
+    depends_on:
+      db-migrate: { condition: service_completed_successfully }
+      keycloak-reconcile: { condition: service_completed_successfully }
+      trino: { condition: service_healthy }
+    # Migrations and default roles are idempotent, so this is safe on every start.
+    # Per-colleague queries use their own HTTP session, which trusts the default CA bundle,
+    # so add the local CA (Trino's TLS) to a copy of it.
+    entrypoint: ["/bin/sh", "-c",
+                 "cat $$(python -m certifi) /etc/ssl/lakehouse/ca.pem > /tmp/ca-bundle.pem
+                 && superset db upgrade && superset init && python /app/pythonpath/provision.py
+                 && exec /app/docker/entrypoints/run-server.sh"]
+    environment:
+      SUPERSET_SECRET_KEY: ${SUPERSET_SECRET_KEY:?}
+      SUPERSET_DB_PASSWORD: ${SUPERSET_DB_PASSWORD:?}
+      SUPERSET_CLIENT_SECRET: ${SUPERSET_CLIENT_SECRET:?}
+      REQUESTS_CA_BUNDLE: /tmp/ca-bundle.pem
+    volumes: [./.secrets/ca.pem:/etc/ssl/lakehouse/ca.pem:ro]   # trusts Trino's TLS cert
+    ports: ["127.0.0.1:3004:8088"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8088/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    mem_limit: 1g

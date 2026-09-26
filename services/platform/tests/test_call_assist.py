@@ -60,3 +60,21 @@ def test_all_recorded_calls_pass():
     results = eval_calls(RulesExtractor())
     failed = {r["name"]: r["failures"] for r in results if not r["passed"]}
     assert not failed, failed
+
+
+def test_console_moves_127_0_0_1_to_localhost():
+    import asyncio
+
+    from starlette.requests import Request
+
+    from lakehouse_platform.call_assist.app import index_page
+
+    def get(host):
+        scope = {"type": "http", "method": "GET", "scheme": "http", "path": "/", "query_string": b"s=1",
+                 "headers": [(b"host", host.encode())], "server": (host.split(":")[0], 8090)}
+        return asyncio.run(index_page(Request(scope)))
+
+    moved = get("127.0.0.1:8090")
+    assert moved.status_code == 308
+    assert moved.headers["location"] == "http://localhost:8090/?s=1"
+    assert get("localhost:8090").status_code == 200

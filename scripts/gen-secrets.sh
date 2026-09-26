@@ -19,6 +19,8 @@ rand() { openssl rand -base64 48 | tr -dc 'A-Za-z0-9' | head -c "${1:-32}"; }
 ensure() {
   local key=$1 value=$2
   if ! grep -q "^${key}=" "$ENV_FILE"; then
+    # A hand-edited last line may lack a newline; never glue a new key onto it.
+    [[ -s $ENV_FILE && -n $(tail -c1 "$ENV_FILE") ]] && echo >>"$ENV_FILE"
     echo "${key}=${value}" >>"$ENV_FILE"
     echo "  generated ${key}"
   fi
@@ -49,6 +51,9 @@ ensure MONITORING_DB_PASSWORD "$(rand)"
 ensure DAGSTER_UI_CLIENT_SECRET "$(rand)"
 ensure LINEAGE_UI_CLIENT_SECRET "$(rand)"
 ensure OAUTH2_PROXY_COOKIE_SECRET "$(rand 32)"
+ensure SUPERSET_DB_PASSWORD "$(rand)"
+ensure SUPERSET_SECRET_KEY "$(rand 64)"
+ensure SUPERSET_CLIENT_SECRET "$(rand)"
 
 # --- Local PKI: a throwaway CA and a server cert for Trino (TLS is mandatory
 # --- for Trino authentication, and we do not turn that safety check off).
