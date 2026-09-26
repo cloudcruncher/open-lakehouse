@@ -82,7 +82,8 @@ Needs Docker (~12 GB RAM for everything; `make up PROFILES=` runs the ~6 GB core
   always; Claude when configured). Fixed code decides which governed tools run. The
   assistant never writes queries or picks customers.
 - **AI call note, under a spend cap.** At call end Claude drafts the note from the
-  transcript alone (no customer data), grounded like every card; a daily cap (default
+  transcript, with the caller's name, postcode, dates and long numbers redacted first; it
+  never sees lakehouse records. Grounded like every card; a daily cap (default
   $0.25) falls back to rules and the template when reached
   ([ADR 12](docs/adr/0012-ai-call-note-and-a-spend-cap.md)).
 - **The assistant sees no more than the colleague.** It uses the colleague's own SSO token
