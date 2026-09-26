@@ -31,6 +31,7 @@ halting freshness for every other customer.
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from datetime import datetime, timezone
@@ -42,6 +43,7 @@ from pyspark.sql import functions as F
 
 from common import (
     ensure_ops_tables,
+    mark_stream_drained,
     renew_silver_lease,
     spark_session,
     table_exists,
@@ -369,6 +371,15 @@ def make_batch_fn(spark: SparkSession):
     return process
 
 
+def drained(progress: dict) -> bool:
+    """True if the trigger read everything Kafka had (not cut short by maxOffsetsPerTrigger)."""
+    for src in progress.get("sources", []):
+        latest = src.get("latestOffset")
+        if not latest or json.loads(src["endOffset"]) != json.loads(latest):
+            return False
+    return bool(progress.get("sources"))
+
+
 def main() -> None:
     start_http_server(int(os.environ.get("METRICS_PORT", 9108)))
     spark = spark_session("cdc-stream")
@@ -402,6 +413,7 @@ def main() -> None:
     # stalled batch shows up as silence and the healthcheck fails.
     PROGRESS.set(time.time())
     last_lease = time.monotonic()
+    last_drain = 0.0
     while query.isActive:
         # Renew on a clock, not per batch: an idle stream still owns silver.
         if time.monotonic() - last_lease > 60:
@@ -411,6 +423,11 @@ def main() -> None:
         if progress:
             ts = datetime.fromisoformat(progress["timestamp"].replace("Z", "+00:00"))
             PROGRESS.set(ts.timestamp())
+            if ts.timestamp() > last_drain and drained(progress):
+                # That trigger read up to the newest offsets and has finished, so
+                # everything in Kafka at its start is now in silver.
+                mark_stream_drained(spark, ts.timestamp())
+                last_drain = ts.timestamp()
         query.awaitTermination(5)
     if query.exception():
         raise RuntimeError(f"stream stopped: {query.exception()}")

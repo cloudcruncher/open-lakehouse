@@ -253,17 +253,50 @@ def renew_silver_lease(spark: SparkSession, holder: str) -> None:
     spark.sql(f"ALTER NAMESPACE silver SET PROPERTIES ('{LEASE_PROPERTY}' = '{holder}@{int(time.time())}')")
 
 
-def silver_lease_holder(spark: SparkSession) -> str | None:
-    """The live lease holder, or None if the lease is absent or expired."""
+def _silver_property(spark: SparkSession, key: str) -> str | None:
     rows = spark.sql("DESCRIBE NAMESPACE EXTENDED silver").collect()
     props = next((r[1] for r in rows if r[0].lower() == "properties"), "") or ""
-    marker = f"{LEASE_PROPERTY},"
+    marker = f"{key},"
     for part in props.strip("()").split("), ("):
         if part.startswith(marker):
-            holder, _, ts = part[len(marker):].rpartition("@")
-            if ts.isdigit() and time.time() - int(ts) < LEASE_TTL_S:
-                return holder
+            return part[len(marker):]
     return None
+
+
+def silver_lease_holder(spark: SparkSession) -> str | None:
+    """The live lease holder, or None if the lease is absent or expired."""
+    holder, _, ts = (_silver_property(spark, LEASE_PROPERTY) or "").rpartition("@")
+    if ts.isdigit() and time.time() - int(ts) < LEASE_TTL_S:
+        return holder
+    return None
+
+
+# The stream records when it last had nothing left to read: everything in Kafka at
+# that moment is in silver. Readers that need a complete silver (gold) wait for a
+# drain that started after they did, instead of building on a stream mid-catch-up.
+DRAINED_PROPERTY = "writer.drained-at"
+
+
+def mark_stream_drained(spark: SparkSession, at: float) -> None:
+    spark.sql(f"ALTER NAMESPACE silver SET PROPERTIES ('{DRAINED_PROPERTY}' = '{int(at)}')")
+
+
+def wait_for_stream_drain(spark: SparkSession, timeout_s: int = 900) -> None:
+    """If a stream owns silver, block until it has drained everything published before now."""
+    holder = silver_lease_holder(spark)
+    if not holder:
+        return
+    since, deadline = time.time(), time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        at = _silver_property(spark, DRAINED_PROPERTY) or ""
+        if at.isdigit() and int(at) >= since:
+            print(f"[drain] '{holder}' caught up at {int(at)}; silver is complete", flush=True)
+            return
+        print(f"[drain] waiting for '{holder}' to catch up before reading silver", flush=True)
+        time.sleep(10)
+    raise RuntimeError(
+        f"stream '{holder}' did not catch up within {timeout_s}s; refusing to build on a partial silver"
+    )
 
 
 def halt(message: str) -> None:

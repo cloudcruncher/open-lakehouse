@@ -26,6 +26,7 @@ from common import (
     record_run,
     spark_session,
     table_exists,
+    wait_for_stream_drain,
     write_audit_publish,
 )
 
@@ -138,6 +139,7 @@ def build(spark: SparkSession) -> DataFrame:
 def main() -> None:
     spark = spark_session("gold-customer-360")
     ensure_ops_tables(spark)
+    wait_for_stream_drain(spark)
     run_id = new_run_id()
     started = datetime.now(timezone.utc)
     df = build(spark)
