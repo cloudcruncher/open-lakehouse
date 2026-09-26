@@ -20,7 +20,7 @@ lakehouse produced it: the Iceberg snapshot the answer was pinned to (and the jo
 committed it), the Trino query run as the colleague, OPA's row filter and masks for that
 colleague, and the audit row. See [Platform x-ray](docs/live-call-assist.md#platform-x-ray-how-the-lakehouse-answered).
 
-Everything below is checked by `make verify` (53 end-to-end assertions) and `make chaos`
+Everything below is checked by `make verify` (54 end-to-end assertions) and `make chaos`
 (11 components killed in turn), locally and on every push in CI. None of it is aspirational.
 
 ```mermaid
@@ -53,7 +53,7 @@ flowchart LR
 ## Quickstart
 
 ```bash
-make demo        # secrets → platform (all profiles) → synthetic bank → batch + streaming → 53 checks
+make demo        # secrets → platform (all profiles) → synthetic bank → batch + streaming → 54 checks
 make call        # a live call, headless: caller → transcript → agent → governed data → guidance
 make live-demo   # all five demo calls (watch them at http://localhost:8090, sign in as alice)
 make chaos       # kill -9 every component; watch it fail safe and heal itself

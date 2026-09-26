@@ -133,6 +133,8 @@ from lakehouse_orchestration.definitions import defs
 g = defs.resolve_asset_graph()
 print(len(g.get_all_asset_keys()), len(g.asset_check_keys), len(list(defs.schedules)))' 2>&1 | tail -1)
   expect_contains "Dagster: 13 assets, 19 WAP checks, 3 schedules" "$out" "^13 19 3$"
+  out=$("${DC[@]}" exec -T dagster-code python3 - < jobs/spark/orchestration/tests/lease_race.py 2>&1 | tail -1)
+  expect_contains "Dagster: scheduled run skips silver the stream owns; manual backfill refused" "$out" "^OK$"
   out=$("${DC[@]}" exec -T marquez curl -fsS "localhost:5000/api/v1/lineage?nodeId=dataset:s3://lakehouse:warehouse/gold/customer_360&depth=6" 2>&1)
   expect_contains "lineage: gold.customer_360 traces back to silver (OpenLineage)" "$out" "warehouse/silver/customers"
 fi

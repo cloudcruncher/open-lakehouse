@@ -26,7 +26,9 @@ from datetime import timedelta
 from pathlib import Path
 
 import dagster as dg
-from dagster._core.errors import DagsterPipesExecutionError  # not re-exported at top level
+from dagster._core.errors import (
+    DagsterPipesExecutionError,
+)  # not re-exported at top level
 
 RUNNER = "/opt/pipelines/run.sh"
 ENTITIES = ["customers", "accounts", "transactions", "complaints"]
@@ -73,15 +75,24 @@ def silver_lease_holder() -> str | None:
     Checked *before* launching Spark: when the CDC stream owns silver, a batch run
     would only start a JVM to decide to do nothing.
     """
-    env = dict(line.split("=", 1) for line in SECRETS.read_text().split() if "=" in line)
-    form = urllib.parse.urlencode({
-        "grant_type": "client_credentials", "scope": "PRINCIPAL_ROLE:ALL",
-        "client_id": env["SPARK_POLARIS_CLIENT_ID"], "client_secret": env["SPARK_POLARIS_CLIENT_SECRET"],
-    }).encode()
-    with urllib.request.urlopen(f"{POLARIS}/v1/oauth/tokens", data=form, timeout=10) as r:  # noqa: S310
+    env = dict(
+        line.split("=", 1) for line in SECRETS.read_text().split() if "=" in line
+    )
+    form = urllib.parse.urlencode(
+        {
+            "grant_type": "client_credentials",
+            "scope": "PRINCIPAL_ROLE:ALL",
+            "client_id": env["SPARK_POLARIS_CLIENT_ID"],
+            "client_secret": env["SPARK_POLARIS_CLIENT_SECRET"],
+        }
+    ).encode()
+    with urllib.request.urlopen(
+        f"{POLARIS}/v1/oauth/tokens", data=form, timeout=10
+    ) as r:  # noqa: S310
         token = json.load(r)["access_token"]
     req = urllib.request.Request(
-        f"{POLARIS}/v1/lakehouse/namespaces/silver", headers={"Authorization": f"Bearer {token}"}
+        f"{POLARIS}/v1/lakehouse/namespaces/silver",
+        headers={"Authorization": f"Bearer {token}"},
     )
     with urllib.request.urlopen(req, timeout=10) as r:  # noqa: S310 - fixed internal URL
         lease = json.load(r).get("properties", {}).get("writer.lease", "")
@@ -123,10 +134,15 @@ sources = [
 )
 def bronze(context: dg.AssetExecutionContext, pipes: dg.PipesSubprocessClient):
     """Incremental JDBC ingest (backfill path; the CDC stream is the live path)."""
-    yield from spark_step(context, pipes, "ingest_bronze").get_results(implicit_materializations=False)
+    yield from spark_step(context, pipes, "ingest_bronze").get_results(
+        implicit_materializations=False
+    )
 
 
 # ------------------------------------------------------------------- silver
+SILVER_KEYS = {dg.AssetKey(["silver", t]) for t in ENTITIES}
+
+
 @dg.multi_asset(
     specs=[
         dg.AssetSpec(
@@ -154,20 +170,40 @@ def bronze(context: dg.AssetExecutionContext, pipes: dg.PipesSubprocessClient):
     ],
     retry_policy=RETRY,
     op_tags={"lakehouse/writer": "silver"},
-    can_subset=False,
+    # Subsettable only so its outputs (assets and WAP checks) are optional: a scheduled
+    # run that finds the stream in charge emits nothing rather than fake check results.
+    # The Spark job still writes silver as one unit; the guard below enforces that.
+    can_subset=True,
 )
 def silver(context: dg.AssetExecutionContext, pipes: dg.PipesSubprocessClient):
     """Batch silver. Skipped while the CDC stream holds the silver writer lease."""
+    if set(context.selected_asset_keys) != SILVER_KEYS:
+        raise dg.Failure(
+            description="silver is built as one unit (brand resolves via customers); select all silver assets.",
+            allow_retries=False,
+        )
     holder = silver_lease_holder()
+    if holder and context.run.tags.get("dagster/schedule_name"):
+        # The schedule checks the lease when it plans the run, but the stream can take it
+        # back before this step starts (e.g. both resume after the host sleeps). Silver is
+        # then already current, so skip rather than fail: gold (downstream) is skipped too,
+        # and gold_refresh rebuilds it from streamed silver within 30 minutes.
+        context.log.warning(
+            f"silver skipped: '{holder}' took the writer lease after this run was planned. "
+            "The stream keeps silver current; gold_refresh rebuilds gold from it."
+        )
+        return
     if holder:
         # Explicit, not a silent skip: an operator asked for a batch write that would race
-        # the live stream. The scheduled refresh never gets here (it checks the lease first).
+        # the live stream.
         raise dg.Failure(
             description=f"silver is owned by '{holder}' (live lease). Stop the CDC stream to run a batch "
             "backfill; while it runs, the stream enforces the same contract per micro-batch.",
             allow_retries=False,
         )
-    yield from spark_step(context, pipes, "silver").get_results(implicit_materializations=False)
+    yield from spark_step(context, pipes, "silver").get_results(
+        implicit_materializations=False
+    )
 
 
 # --------------------------------------------------------------------- gold
@@ -201,7 +237,9 @@ def silver(context: dg.AssetExecutionContext, pipes: dg.PipesSubprocessClient):
 def gold_customer_360(
     context: dg.AssetExecutionContext, pipes: dg.PipesSubprocessClient
 ):
-    yield from spark_step(context, pipes, "gold").get_results(implicit_materializations=False)
+    yield from spark_step(context, pipes, "gold").get_results(
+        implicit_materializations=False
+    )
 
 
 # -------------------------------------------------------------- maintenance
@@ -241,7 +279,9 @@ def nightly_refresh(context: dg.ScheduleEvaluationContext):
     holder = silver_lease_holder()
     if holder:
         return dg.RunRequest(
-            asset_selection=list(BRONZE_AND_GOLD.resolve(context.repository_def.asset_graph)),
+            asset_selection=list(
+                BRONZE_AND_GOLD.resolve(context.repository_def.asset_graph)
+            ),
             tags={"lakehouse/silver": f"owned-by-{holder}"},
         )
     return dg.RunRequest()

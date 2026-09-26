@@ -444,7 +444,9 @@
       "showPoints": "never",
       "thresholdsStyle": {
        "mode": "line+area"
-      }
+      },
+      "axisSoftMin": 0,
+      "axisSoftMax": 0.05
      },
      "thresholds": {
       "mode": "absolute",

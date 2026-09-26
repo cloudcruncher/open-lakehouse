@@ -19,7 +19,9 @@ DS = {"type": "prometheus", "uid": "prometheus"}
 _ids = count(1)
 
 
-def ts(title, exprs, unit="short", x=0, y=0, w=12, h=8, thresholds=None, legend=True):
+def ts(
+    title, exprs, unit="short", x=0, y=0, w=12, h=8, thresholds=None, legend=True, soft_max=None
+):
     panel = {
         "id": next(_ids),
         "type": "timeseries",
@@ -54,6 +56,9 @@ def ts(title, exprs, unit="short", x=0, y=0, w=12, h=8, thresholds=None, legend=
         panel["fieldConfig"]["defaults"]["custom"]["thresholdsStyle"] = {
             "mode": "line+area"
         }
+    if soft_max is not None:
+        # A flat zero series autoscales to a meaningless range; keep the alert line in view.
+        panel["fieldConfig"]["defaults"]["custom"].update(axisSoftMin=0, axisSoftMax=soft_max)
     return panel
 
 
@@ -115,7 +120,10 @@ GREEN, AMBER, RED = "green", "orange", "red"
 
 
 def slo_dashboard():
-    avail = '1 - (sum(increase(mcp_tool_calls_total{outcome=~"unavailable|error"}[$__range])) / clamp_min(sum(increase(mcp_tool_calls_total[$__range])), 1))'
+    avail = (
+        '1 - ((sum(increase(mcp_tool_calls_total{outcome=~"unavailable|error"}[$__range])) or vector(0))'
+        " / clamp_min(sum(increase(mcp_tool_calls_total[$__range])) or vector(0), 1))"
+    )
     return dashboard(
         "platform-slos",
         "Platform SLOs — agents on live calls",
@@ -418,6 +426,7 @@ def streaming_dashboard():
                 8,
                 8,
                 [{"color": GREEN, "value": None}, {"color": RED, "value": 0.01}],
+                soft_max=0.05,
             ),
             ts(
                 "WAL retained by replication slots",

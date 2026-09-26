@@ -1,18 +1,20 @@
 # SLOs as code (see docs/scale.md). Recording rules compute SLIs; alerts use
 # multi-window, multi-burn-rate (Google SRE workbook): page on a fast burn that is
 # still happening, ticket on a slow one. "denied" is policy working, never an error.
+# Counter series only exist once incremented, so a gateway with no errors (or no calls)
+# since its last restart has no error series at all: `or vector(0)` makes that 0, not "no data".
 groups:
   - name: sli-recording
     interval: 30s
     rules:
       - record: sli:mcp_tool_errors:ratio_rate5m
-        expr: sum(rate(mcp_tool_calls_total{outcome=~"unavailable|error"}[5m])) / clamp_min(sum(rate(mcp_tool_calls_total[5m])), 1e-9)
+        expr: (sum(rate(mcp_tool_calls_total{outcome=~"unavailable|error"}[5m])) or vector(0)) / clamp_min(sum(rate(mcp_tool_calls_total[5m])) or vector(0), 1e-9)
       - record: sli:mcp_tool_errors:ratio_rate30m
-        expr: sum(rate(mcp_tool_calls_total{outcome=~"unavailable|error"}[30m])) / clamp_min(sum(rate(mcp_tool_calls_total[30m])), 1e-9)
+        expr: (sum(rate(mcp_tool_calls_total{outcome=~"unavailable|error"}[30m])) or vector(0)) / clamp_min(sum(rate(mcp_tool_calls_total[30m])) or vector(0), 1e-9)
       - record: sli:mcp_tool_errors:ratio_rate1h
-        expr: sum(rate(mcp_tool_calls_total{outcome=~"unavailable|error"}[1h])) / clamp_min(sum(rate(mcp_tool_calls_total[1h])), 1e-9)
+        expr: (sum(rate(mcp_tool_calls_total{outcome=~"unavailable|error"}[1h])) or vector(0)) / clamp_min(sum(rate(mcp_tool_calls_total[1h])) or vector(0), 1e-9)
       - record: sli:mcp_tool_errors:ratio_rate6h
-        expr: sum(rate(mcp_tool_calls_total{outcome=~"unavailable|error"}[6h])) / clamp_min(sum(rate(mcp_tool_calls_total[6h])), 1e-9)
+        expr: (sum(rate(mcp_tool_calls_total{outcome=~"unavailable|error"}[6h])) or vector(0)) / clamp_min(sum(rate(mcp_tool_calls_total[6h])) or vector(0), 1e-9)
       - record: sli:mcp_tool_latency:p95_5m
         expr: histogram_quantile(0.95, sum by (le) (rate(mcp_tool_call_duration_seconds_bucket[5m])))
       - record: sli:mcp_tool_latency:p99_5m

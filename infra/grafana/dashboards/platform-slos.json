@@ -43,7 +43,7 @@
    "targets": [
     {
      "refId": "A",
-     "expr": "1 - (sum(increase(mcp_tool_calls_total{outcome=~\"unavailable|error\"}[$__range])) / clamp_min(sum(increase(mcp_tool_calls_total[$__range])), 1))",
+     "expr": "1 - ((sum(increase(mcp_tool_calls_total{outcome=~\"unavailable|error\"}[$__range])) or vector(0)) / clamp_min(sum(increase(mcp_tool_calls_total[$__range])) or vector(0), 1))",
      "datasource": {
       "type": "prometheus",
       "uid": "prometheus"

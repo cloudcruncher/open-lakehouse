@@ -240,7 +240,7 @@ footer { border-top: 1px solid var(--line); padding-block: 28px 48px; color: var
     <a href="#demo">Demo</a><a href="#architecture">Architecture</a><a href="#proof">Proof</a><a href="#chaos">Chaos</a><a href="#scale">Scale</a><a href="https://github.com/cloudcruncher/open-lakehouse">GitHub</a>
   </nav>
   <div class="badges" aria-label="Latest CI results">
-    <span class="badge">ci <b>passing</b></span><span class="badge">e2e <b>53/53</b></span><span class="badge">release <b>signed</b></span>
+    <span class="badge">ci <b>passing</b></span><span class="badge">e2e <b>54/54</b></span><span class="badge">release <b>signed</b></span>
   </div>
 </header>
 
@@ -252,7 +252,7 @@ footer { border-top: 1px solid var(--line); padding-block: 28px 48px; color: var
     <p class="lede">An open lakehouse (Iceberg, Polaris, Trino, OPA, Kafka, Spark) built around one hard consumer: an AI assistant on a bank colleague's live customer call. The assistant is the demo. The platform underneath is the point, so every answer shows how the platform produced it.</p>
     <div class="hero-stats">
       <div><b class="num">~10 s</b><span>source commit to visible for a colleague (CDC)</span></div>
-      <div><b class="num">53</b><span>end-to-end checks on every push, from an empty machine</span></div>
+      <div><b class="num">54</b><span>end-to-end checks on every push, from an empty machine</span></div>
       <div><b class="num">11/11</b><span>components killed and recovered with no data lost</span></div>
     </div>
     <div class="cta">
@@ -482,7 +482,7 @@ make sql U=carol Q="SELECT * FROM lakehouse.silver.accounts"  <span class="c"># 
       <pre class="cmd"><span class="c"># Docker with ~12 GB, uv, make</span>
 git clone https://github.com/cloudcruncher/open-lakehouse
 cd open-lakehouse
-make demo        <span class="c"># up, seed, pipelines, 53 checks</span>
+make demo        <span class="c"># up, seed, pipelines, 54 checks</span>
 make urls        <span class="c"># console, Grafana, Dagster, lineage</span>
 make live-demo   <span class="c"># play every demo call as alice</span>
 make chaos       <span class="c"># break it on purpose</span></pre>
