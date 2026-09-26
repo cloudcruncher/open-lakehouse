@@ -460,6 +460,9 @@ services:
     depends_on:
       polaris-init: { condition: service_completed_successfully }
       kafka-init: { condition: service_completed_successfully }
+      # Start once changes are flowing; also makes cdc-init a waited-on one-shot, which
+      # `docker compose up --wait` requires (otherwise its exit fails the command).
+      cdc-init: { condition: service_completed_successfully }
     command: ["stream_cdc"]
     environment:
       AWS_REGION: us-east-1
