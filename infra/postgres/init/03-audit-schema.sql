@@ -30,26 +30,8 @@ CREATE TABLE audit.tool_calls (
 );
 CREATE INDEX ON audit.tool_calls (colleague, occurred_at);
 
--- Chain: row_hash = sha256(prev_hash || canonical row content). An advisory lock
--- serialises writers so the chain stays linear under concurrency.
-CREATE FUNCTION audit.chain_hash() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = audit, public AS $$
-DECLARE
-    last_hash TEXT;
-BEGIN
-    PERFORM pg_advisory_xact_lock(hashtext('audit.tool_calls'));
-    SELECT row_hash INTO last_hash FROM audit.tool_calls ORDER BY seq DESC LIMIT 1;
-    NEW.prev_hash := COALESCE(last_hash, 'genesis');
-    NEW.row_hash := encode(digest(
-        NEW.prev_hash || '|' || NEW.event_id::text || '|' || extract(epoch FROM NEW.occurred_at)::text || '|' ||
-        NEW.colleague || '|' || NEW.agent_client || '|' || NEW.tool || '|' ||
-        NEW.arguments::text || '|' || NEW.outcome || '|' || COALESCE(NEW.rows_returned::text, ''),
-        'sha256'), 'hex');
-    RETURN NEW;
-END $$;
-
-CREATE TRIGGER chain_hash BEFORE INSERT ON audit.tool_calls
-    FOR EACH ROW EXECUTE FUNCTION audit.chain_hash();
+-- The hash chain (trigger and verify_chain) is defined in infra/postgres/reconcile.sql,
+-- which runs before any service writes and again on every `up`, so fixes reach old databases.
 
 CREATE FUNCTION audit.block_mutation() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -61,28 +43,7 @@ CREATE TRIGGER append_only BEFORE UPDATE OR DELETE ON audit.tool_calls
 CREATE TRIGGER no_truncate BEFORE TRUNCATE ON audit.tool_calls
     FOR EACH STATEMENT EXECUTE FUNCTION audit.block_mutation();
 
--- Recomputes the chain; returns the first broken seq, or NULL if intact.
-CREATE FUNCTION audit.verify_chain() RETURNS BIGINT
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = audit, public AS $$
-DECLARE
-    r RECORD;
-    expected_prev TEXT := 'genesis';
-BEGIN
-    FOR r IN SELECT * FROM audit.tool_calls ORDER BY seq LOOP
-        IF r.prev_hash <> expected_prev OR r.row_hash <> encode(digest(
-            r.prev_hash || '|' || r.event_id::text || '|' || extract(epoch FROM r.occurred_at)::text || '|' ||
-            r.colleague || '|' || r.agent_client || '|' || r.tool || '|' ||
-            r.arguments::text || '|' || r.outcome || '|' || COALESCE(r.rows_returned::text, ''),
-            'sha256'), 'hex') THEN
-            RETURN r.seq;
-        END IF;
-        expected_prev := r.row_hash;
-    END LOOP;
-    RETURN NULL;
-END $$;
-
 GRANT USAGE ON SCHEMA audit TO audit_writer;
 GRANT INSERT ON audit.tool_calls TO audit_writer;
 -- Read back only its own row's number and chain hash (provenance), never the content.
 GRANT SELECT (seq, row_hash) ON audit.tool_calls TO audit_writer;
-GRANT EXECUTE ON FUNCTION audit.verify_chain() TO audit_writer;

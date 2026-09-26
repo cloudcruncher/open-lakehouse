@@ -49,6 +49,21 @@ upstream release.
 **Mitigate:** contact the source owner (see the contract's `team`). Good rows keep
 flowing; quarantined rows can be replayed from `bronze.cdc_events` once they're fixed.
 
+## audit-chain
+Not an alert: `make verify` reports "hash chain intact" failing with a row number.
+**Means:** `audit.verify_chain()` found a row whose hash or predecessor doesn't match, in
+seq order. Either the log was changed around its controls, or the row predates the
+writer fix (seq now assigned under the chain lock): before it, two tool calls in the same
+millisecond could take seq numbers in one order and the lock in the other, and the next
+row could chain to the wrong one (a fork).
+**Confirm:** as the Postgres owner, look at the rows around the reported seq:
+`SELECT seq, occurred_at, tool, purpose, left(prev_hash,10), left(row_hash,10) FROM audit.tool_calls WHERE seq BETWEEN n-2 AND n+3 ORDER BY seq`.
+A bug-made fork: rows milliseconds apart, same call, every hash recomputes, and two rows
+share a `prev_hash`. Anything else (a hash that doesn't recompute, a missing seq) is
+tampering until proven otherwise: escalate to security and keep the database as evidence.
+**Mitigate:** a bug-made fork stays in the log (it is append-only); record the finding.
+For a demo stack, recreating the `audit` database starts a fresh chain.
+
 ## missing-change
 Not an alert: a colleague says a change made in core banking isn't in silver.
 **Means:** the change never arrived, was quarantined, or is parked waiting for its parent.
