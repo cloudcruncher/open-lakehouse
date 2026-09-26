@@ -147,7 +147,13 @@ class CallSession:
             await self.emit(
                 {"type": "transcript", "seq": u.seq, "speaker": u.speaker, "text": u.text, "ts": u.ts}
             )
-            sig = await asyncio.to_thread(self.extractor.extract, u.text, u.speaker)
+            if hasattr(self.extractor, "trace"):
+                sig, understanding = await asyncio.to_thread(self.extractor.trace, u.text, u.speaker)
+            else:
+                sig, understanding = await asyncio.to_thread(self.extractor.extract, u.text, u.speaker), None
+            if understanding and u.speaker == "customer":
+                # Which engine understood this line (and what Claude added), for the console.
+                await self.emit({"type": "understanding", "seq": u.seq, **understanding})
             self.signals = self.signals.merge(sig)
             if sig.intents or sig.vulnerabilities or sig.risks:
                 await self.emit(

@@ -53,6 +53,29 @@ Account cards stay **locked (blurred) until the colleague confirms ID&V**.
 | Everything is audited | Every lookup is in the hash-chained audit log under the call reference |
 | No credentials of its own | No DB, storage or catalog access; tokens are held in memory only |
 
+## Claude or rules: turning the model on, and seeing that it's used
+
+Understanding runs on rules alone until an Anthropic API key is present. To use Claude:
+
+```bash
+echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env        # .env is git-ignored
+docker compose up -d --force-recreate call-assist   # env is read at container start
+curl -s localhost:8090/config                        # "extractor": "claude+rules", "model": ...
+```
+
+Where to see it working (the model is `claude-haiku-4-5` by default, `CALL_ASSIST_MODEL` to change):
+
+| Place | Rules only | Claude answering | Claude failing |
+|---|---|---|---|
+| Console header chip | `understanding: rules only (no API key)` | `understanding: Claude (model) + rules` | same text, turns amber |
+| Under each caller line | nothing | `✦ model · 480 ms · 412→38 tok · added: card fraud` (or "agreed with rules") | `rules only · Claude not used: <reason>` |
+| Metrics (`:8090/metrics`) | none | `assist_llm_extractions_total{outcome="ok"}`, `assist_llm_extraction_seconds` | same counter, `outcome` = `auth`, `timeout`, `rate_limited`, `api_error`, `bad_output`... |
+
+A failure never blocks the call (rules have already answered), but it is never silent
+either: the reason is the API's own message, e.g. "Your credit balance is too low". Only
+customer lines go to the model; colleague lines use rules. The model never sees customer
+data or calls tools: it labels the utterance, and the fixed planner decides what to fetch.
+
 ## Platform x-ray: how the lakehouse answered
 
 Live Call Assist is a demo of the *platform*, so each card can show how its data was

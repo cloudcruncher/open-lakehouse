@@ -106,6 +106,7 @@ function handle(ev) {
   switch (ev.type) {
     case "transcript": return addLine(ev);
     case "signals": return addSignals(ev);
+    case "understanding": return addUnderstanding(ev);
     case "card": return addCard(ev.card);
     case "customer": return showCustomer(ev);
     case "tool_call": return addTrace(ev);
@@ -124,6 +125,27 @@ function addLine(ev) {
   d.id = `u${ev.seq}`;
   d.append(el("span", "who", ev.speaker === "customer" ? "Caller" : "You"), document.createTextNode(ev.text));
   $("lines").append(d); d.scrollIntoView({ block: "end", behavior: "smooth" });
+}
+
+// Which engine understood each caller line. With a key set, a line shows the model, its
+// latency and what it added beyond the rules; a fallback says why (timeout, bad key...).
+let fallbacks = 0;
+function addUnderstanding(ev) {
+  const host = $(`u${ev.seq}`); if (!host) return;
+  const line = el("div", `llm ${ev.engine === "claude" ? "claude" : ev.fallback ? "fallback" : "rules"}`);
+  if (ev.engine === "claude") {
+    const added = Object.values(ev.added ?? {}).flat().map((x) => x.replaceAll("_", " "));
+    line.textContent = `✦ ${ev.model} · ${ev.ms} ms · ${ev.input_tokens}→${ev.output_tokens} tok · ` +
+      (added.length ? `added: ${added.join(", ")}` : "agreed with rules");
+    line.title = `request ${ev.request_id ?? ""}`;
+  } else if (ev.fallback) {
+    fallbacks += 1;
+    line.textContent = `rules only · Claude not used: ${ev.fallback} (${ev.ms} ms)`;
+    $("mode").classList.add("warn"); $("mode").title = `${fallbacks} fallback(s) this session`;
+  } else {
+    return; // rules-only mode: the header chip already says so
+  }
+  host.append(line);
 }
 
 function addSignals(ev) {
@@ -226,7 +248,7 @@ function xray(x) {
 // ---------------------------------------------------------------------- boot
 async function boot() {
   cfg = await (await fetch("/config")).json();
-  $("mode").textContent = `understanding: ${cfg.extractor}`;
+  $("mode").textContent = cfg.model ? `understanding: Claude (${cfg.model}) + rules` : "understanding: rules only (no API key)";
   $("login").onclick = login;
   $("signout").onclick = () => location.assign(`${oidc("logout")}?client_id=${cfg.client_id}&post_logout_redirect_uri=${encodeURIComponent(location.origin + "/")}`);
   $("verify").onclick = async () => { if (currentCall) await api(`/api/calls/${currentCall}/verified`, { method: "POST" }); };

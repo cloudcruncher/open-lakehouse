@@ -312,6 +312,7 @@ async def config(_: Request) -> JSONResponse:
             "issuer": ISSUER,
             "client_id": os.environ.get("CONSOLE_CLIENT_ID", "agent-console"),
             "extractor": getattr(extractor, "name", "rules"),
+            "model": getattr(extractor, "model", None),
         }
     )
 

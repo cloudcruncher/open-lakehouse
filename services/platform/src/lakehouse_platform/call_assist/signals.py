@@ -10,6 +10,11 @@ Two interchangeable extractors produce the same `Signals` schema:
                      same schema and merged with the rules output, so the model can
                      add recall but can't remove what the rules found.
 
+Both expose `trace(text, speaker) -> (Signals, trace)`. The trace says which engine
+understood the utterance and, for Claude, the model, request id, latency, tokens, and
+what it added beyond the rules; when Claude wasn't used it says why. The console shows
+it under each caller line, so "is the model actually answering?" is visible per turn.
+
 Neither extractor calls tools or sees customer data. The planner (engine.py) decides
 what to fetch, under fixed policy: the model proposes, policy disposes.
 """
@@ -19,12 +24,25 @@ from __future__ import annotations
 import logging
 import os
 import re
+import time
 from decimal import Decimal
 from enum import StrEnum
+from typing import Any
 
+from prometheus_client import Counter, Histogram
 from pydantic import BaseModel, Field
 
 log = logging.getLogger(__name__)
+
+LLM_CALLS = Counter(
+    "assist_llm_extractions_total", "Claude extraction calls by outcome", ["model", "outcome"]
+)
+LLM_LATENCY = Histogram(
+    "assist_llm_extraction_seconds",
+    "Claude extraction latency",
+    ["model"],
+    buckets=(0.25, 0.5, 0.75, 1, 1.5, 2, 2.5, 4),
+)
 
 
 class Intent(StrEnum):
@@ -154,6 +172,9 @@ RISK_PATTERNS: dict[Risk, re.Pattern[str]] = {
 class RulesExtractor:
     name = "rules"
 
+    def trace(self, text: str, speaker: str) -> tuple[Signals, dict[str, Any]]:
+        return self.extract(text, speaker), {"engine": "rules"}
+
     def extract(self, text: str, speaker: str) -> Signals:
         s = Signals()
         # Identity and intents come from the customer; the colleague's words are context only.
@@ -186,10 +207,11 @@ class ClaudeExtractor:
         "postcodes or amounts."
     )
 
-    def __init__(self, model: str | None = None, timeout_s: float = 2.5) -> None:
+    def __init__(self, model: str | None = None, timeout_s: float = 2.5, client: Any = None) -> None:
         import anthropic  # optional at runtime: only needed when a key is configured
 
-        self.client = anthropic.Anthropic(timeout=timeout_s, max_retries=0)
+        # No retries: a live call can't wait; the rules result is already in hand.
+        self.client = client or anthropic.Anthropic(timeout=timeout_s, max_retries=0)
         self.model = model or os.environ.get("CALL_ASSIST_MODEL", "claude-haiku-4-5")
         self.rules = RulesExtractor()
         schema = Signals.model_json_schema()
@@ -200,9 +222,16 @@ class ClaudeExtractor:
         }
 
     def extract(self, text: str, speaker: str) -> Signals:
+        return self.trace(text, speaker)[0]
+
+    def trace(self, text: str, speaker: str) -> tuple[Signals, dict[str, Any]]:
+        import anthropic
+
         base = self.rules.extract(text, speaker)
         if speaker != "customer":
-            return base
+            return base, {"engine": "rules", "note": "colleague lines use rules only"}
+        started = time.monotonic()
+        info: dict[str, Any] = {"model": self.model}
         try:
             msg = self.client.messages.create(
                 model=self.model,
@@ -213,10 +242,54 @@ class ClaudeExtractor:
                 messages=[{"role": "user", "content": f"<utterance>{text}</utterance>"}],
             )
             block = next(b for b in msg.content if getattr(b, "type", "") == "tool_use")
-            return base.merge(Signals.model_validate(block.input))
-        except Exception as exc:  # noqa: BLE001 - the model is an enhancement, never a dependency
-            log.warning("LLM extraction failed, using rules only: %s", str(exc)[:200])
-            return base
+            found = Signals.model_validate(block.input)
+        # The model is an enhancement, never a dependency: every failure falls back to
+        # rules, but says which failure, so a bad key isn't mistaken for a quiet model.
+        except anthropic.APITimeoutError:
+            return self._fallback(base, info, started, "timeout", "timeout")
+        except anthropic.AuthenticationError:
+            return self._fallback(base, info, started, "auth", "invalid API key")
+        except anthropic.PermissionDeniedError:
+            return self._fallback(base, info, started, "permission", "API key lacks permission")
+        except anthropic.NotFoundError:
+            return self._fallback(base, info, started, "not_found", f"unknown model {self.model}")
+        except anthropic.RateLimitError:
+            return self._fallback(base, info, started, "rate_limited", "rate limited")
+        except anthropic.APIStatusError as exc:
+            # Say what the API said (e.g. "credit balance is too low"), not just the code.
+            body = exc.body if isinstance(exc.body, dict) else {}
+            detail = (body.get("error") or {}).get("message") or ""
+            reason = f"API error {exc.status_code}" + (f": {detail[:120]}" if detail else "")
+            return self._fallback(base, info, started, "api_error", reason)
+        except anthropic.APIConnectionError:
+            return self._fallback(base, info, started, "network", "network error")
+        except (StopIteration, ValueError) as exc:  # no tool call, or output failed the schema
+            return self._fallback(base, info, started, "bad_output", f"unusable output: {str(exc)[:80]}")
+        elapsed = time.monotonic() - started
+        LLM_CALLS.labels(self.model, "ok").inc()
+        LLM_LATENCY.labels(self.model).observe(elapsed)
+        added = {
+            field: [str(x) for x in getattr(found, field) if x not in getattr(base, field)]
+            for field in ("intents", "vulnerabilities", "risks")
+        }
+        info.update(
+            engine="claude",
+            model=msg.model,
+            ms=int(elapsed * 1000),
+            request_id=getattr(msg, "_request_id", None),
+            input_tokens=msg.usage.input_tokens,
+            output_tokens=msg.usage.output_tokens,
+            added={k: v for k, v in added.items() if v},
+        )
+        return base.merge(found), info
+
+    def _fallback(
+        self, base: Signals, info: dict[str, Any], started: float, outcome: str, reason: str
+    ) -> tuple[Signals, dict[str, Any]]:
+        LLM_CALLS.labels(self.model, outcome).inc()
+        log.warning("Claude extraction fell back to rules: %s", reason)
+        ms = int((time.monotonic() - started) * 1000)
+        return base, info | {"engine": "rules", "fallback": reason, "ms": ms}
 
 
 def default_extractor() -> RulesExtractor | ClaudeExtractor:
