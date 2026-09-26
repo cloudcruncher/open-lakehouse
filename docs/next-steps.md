@@ -23,9 +23,12 @@ Main's e2e (run 36242946867) failed once in the re-verify after chaos, then pass
 "fraud payment written seconds ago is pinpointed (CDC -> agent)". CDC lag was 10 s after chaos and
 the scripted call plays at 3x speed, so the agent looked up transactions before the payment reached
 silver. A real caller can do the same.
-- Where: `services/platform/src/lakehouse_platform/call_assist/engine.py`. When the caller reports
-  a payment that just happened and the tool's `data_as_of` is older than the report, look again
-  (bounded, a few seconds) before saying it is not there.
+- Already there: `_recent()` in `call_assist/engine.py` looks again when the caller names an
+  amount it can't see yet, but only `FRESH_RETRIES = 3` times, 4 s apart: an 8 s window, and
+  the lag after chaos was 10 s.
+- Where: same place. Size the window from measured freshness instead of a fixed count (keep
+  looking while the tool's `data_as_of` is older than the caller's report, up to a cap such as
+  30 s), and say "still arriving" rather than "not found" meanwhile.
 - Done when: the call finds the payment with the stream deliberately lagged (for example, pause
   `cdc-stream` for 15 s during the call), and the e2e check passes repeatedly after chaos.
 
@@ -95,8 +98,9 @@ re-check Haiku 4.5 against the floors before changing model.
   `localhost`; do the same (or document `localhost` only) for the rest.
 - 16,811 transactions in the last 30 days have an empty `merchant` (about £21M, probably transfers).
   Decide whether that is valid source data; if so, label it in silver or gold.
-- Memory headroom: `cdc-connect` ran at ~739 of 768 MiB and Grafana at ~980 MiB of 1 GiB.
-  Check for OOM restarts and raise the caps if needed.
+- Memory headroom: checked 26 Sep, no OOM kills or restarts (Grafana 486 MiB of 1 GiB,
+  `cdc-connect` 374 of 768 MiB, after peaks of ~980 and ~739). Re-check after a long run;
+  raise the caps only if `docker inspect` shows `OOMKilled`.
 - Keycloak account console (`/realms/bank/account`) shows "Something went wrong". No persona needs
   it; either fix or disable the account client.
 - Prometheus (`:9090`) has no login. It is loopback-only; in a real deployment put it behind the
