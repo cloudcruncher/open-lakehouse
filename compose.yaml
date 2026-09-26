@@ -594,6 +594,10 @@ services:
       GF_NEWS_NEWS_FEED_ENABLED: "false"
       # Single sign-on with the bank IdP (OIDC + PKCE). ops_admin is a Grafana admin;
       # every other colleague gets read-only dashboards.
+      # SSO only: no local password form for colleagues. The admin account stays as an
+      # API-only break-glass credential (basic auth), which verify.sh uses.
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_AUTH_OAUTH_AUTO_LOGIN: "true"
       GF_AUTH_GENERIC_OAUTH_ENABLED: "true"
       GF_AUTH_GENERIC_OAUTH_NAME: Bank SSO
       GF_AUTH_GENERIC_OAUTH_CLIENT_ID: grafana
@@ -617,7 +621,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 20
-    mem_limit: 384m
+    mem_limit: 1g
 
   # ============================================ orchestration (profile: ops)
   dagster-code:
@@ -723,7 +727,6 @@ services:
       OAUTH2_PROXY_COOKIE_NAME: _dagster_sso
       OAUTH2_PROXY_REDIRECT_URL: http://localhost:3002/oauth2/callback
       OAUTH2_PROXY_UPSTREAMS: http://dagster-webserver:3000/
-      OAUTH2_PROXY_EMAIL_DOMAINS: "*"
       OAUTH2_PROXY_AUTHENTICATED_EMAILS_FILE: /etc/oauth2-proxy/dagster-admins.txt
     volumes: [./infra/oauth2-proxy/dagster-admins.txt:/etc/oauth2-proxy/dagster-admins.txt:ro]
     ports: ["127.0.0.1:3002:4180"]
