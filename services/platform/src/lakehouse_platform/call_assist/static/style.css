@@ -1,3 +1,4 @@
+[hidden] { display: none !important; }  /* component display rules must never override the hidden attribute */
 :root {
   --bg: #0b1020; --panel: #121933; --panel2: #18214a; --line: #26315f; --text: #e6e9f5; --muted: #8e98c3;
   --accent: #5b8cff; --ok: #2fbf71; --warn: #f5a524; --bad: #ef4f5f; --vio: #a47cff; --cyan: #33c3d6;
