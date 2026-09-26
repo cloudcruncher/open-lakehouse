@@ -135,7 +135,10 @@ function addUnderstanding(ev) {
   const line = el("div", `llm ${ev.engine === "claude" ? "claude" : ev.fallback ? "fallback" : "rules"}`);
   if (ev.engine === "claude") {
     const added = Object.values(ev.added ?? {}).flat().map((x) => x.replaceAll("_", " "));
-    line.textContent = `✦ ${ev.model} · ${ev.ms} ms · ${ev.input_tokens}→${ev.output_tokens} tok · ` +
+    // The label guide is a cached prefix: cache reads bill at 0.1x, so show them apart.
+    const cache = ev.cache_read_tokens ? ` (+${ev.cache_read_tokens} cached)`
+      : ev.cache_write_tokens ? ` (+${ev.cache_write_tokens} cache write)` : "";
+    line.textContent = `✦ ${ev.model} · ${ev.ms} ms · ${ev.input_tokens}${cache}→${ev.output_tokens} tok · ` +
       (added.length ? `added: ${added.join(", ")}` : "agreed with rules");
     line.title = `request ${ev.request_id ?? ""}`;
   } else if (ev.fallback) {

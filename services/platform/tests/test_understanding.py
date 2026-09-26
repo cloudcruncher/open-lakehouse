@@ -1,8 +1,12 @@
+import re
+from pathlib import Path
 from types import SimpleNamespace
 
 import anthropic
 import httpx2
+import yaml
 
+from lakehouse_platform.call_assist import signals
 from lakehouse_platform.call_assist.signals import ClaudeExtractor, Intent, Vulnerability
 
 
@@ -11,7 +15,7 @@ class FakeMessages:
         self.result, self.calls = result, 0
 
     def create(self, **kwargs):
-        self.calls += 1
+        self.calls, self.kwargs = self.calls + 1, kwargs
         assert kwargs["tool_choice"] == {"type": "tool", "name": "record_signals"}
         if isinstance(self.result, Exception):
             raise self.result
@@ -70,3 +74,30 @@ def test_api_error_carries_the_apis_own_message():
     err = anthropic.BadRequestError("400", response=httpx2.Response(400, request=req), body=body)
     _, trace = claude(err).trace("my card was stolen", "customer")
     assert trace["fallback"] == "API error 400: Your credit balance is too low"
+
+
+def test_invented_label_is_dropped_not_the_whole_answer():
+    ex = claude(reply({"intents": ["card_fraud", "account_closure"], "vulnerabilities": ["bereavement"]}))
+    sig, trace = ex.trace("my card's gone and I lost my mum last week", "customer")
+    assert sig.intents == [Intent.CARD_FRAUD] and Vulnerability.BEREAVEMENT in sig.vulnerabilities
+    assert trace["engine"] == "claude" and trace["dropped"] == ["intents:account_closure"]
+
+
+def test_label_guide_examples_are_not_eval_cases():
+    # The guide's worked examples are in the prompt; eval lines must stay unseen, or the eval
+    # would mark its own homework.
+    guide = re.findall(r'^"(.+)"$', ClaudeExtractor.SYSTEM, re.MULTILINE)
+    evals = Path(signals.__file__).parent / "evals" / "utterances.yaml"
+    seen = {u["text"] for u in yaml.safe_load(evals.read_text())} & set(guide)
+    assert len(guide) > 100 and not seen
+
+
+def test_prompt_is_cached_and_cache_use_is_traced():
+    usage = SimpleNamespace(
+        input_tokens=430, output_tokens=38, cache_read_input_tokens=4372, cache_creation_input_tokens=0
+    )
+    msg = SimpleNamespace(**{**vars(reply({"intents": ["card_fraud"]})), "usage": usage})
+    ex = claude(msg)
+    _, trace = ex.trace("my card was nicked", "customer")
+    assert trace["cache_read_tokens"] == 4372 and trace["cache_write_tokens"] == 0
+    assert ex.client.messages.kwargs["system"][0]["cache_control"] == {"type": "ephemeral"}
