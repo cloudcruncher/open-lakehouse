@@ -116,3 +116,18 @@ def test_extractor_respects_the_budget():
     sig, trace = ex.trace("my card was stolen", "customer")
     assert fake.messages.calls == 0 and trace["engine"] == "rules"
     assert trace["fallback"].startswith("daily AI budget reached") and sig.intents  # rules still answered
+
+
+def test_what_the_caller_said_about_themselves_is_redacted():
+    summ = summarizer("Reason: unrecognised payment of £89.99.")
+    lines = [
+        ("colleague", "Can I take your name and postcode?"),
+        ("customer", "It's Priya Shah, B15 2TT, customer number C0000042."),
+        ("customer", "Date of birth fourth of March 1985, mobile 07700 900123."),
+        ("customer", "Thanks Priya here, the £89.99 payment isn't mine. I paid it in May."),
+    ]
+    summ.draft(lines, [], {}, True, [], names=["Priya Shah", "Priya", "Shah"])
+    sent = str(summ.client.messages.kwargs["messages"])
+    for secret in ("Priya", "Shah", "B15 2TT", "C0000042", "March 1985", "07700", "900123"):
+        assert secret not in sent
+    assert "£89.99" in sent and "in May" in sent  # what the note needs survives

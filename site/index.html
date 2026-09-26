@@ -506,7 +506,7 @@ make chaos       <span class="c"># break it on purpose</span></pre>
         <li><b>One machine.</b> High availability, multi-AZ Kafka and Trino clusters are designed in <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/scale.md">scale.md</a>, not run here.</li>
         <li><b>Synthetic data.</b> 20,000 generated customers and scripted calls. Nothing is real.</li>
         <li><b>Speech-to-text is simulated.</b> Transcripts arrive on Kafka as a contact-centre platform would send them.</li>
-        <li><b>Rules-first understanding.</b> Claude is used only when an API key is set: to label caller lines and to draft the after-call note from what was said (never from customer data). Its output is bound by the same policy and grounding checks, under a daily spend cap.</li>
+        <li><b>Rules-first understanding.</b> Claude is used only when an API key is set: to label caller lines and to draft the after-call note from what was said (identity details redacted, never lakehouse records). Its output is bound by the same policy and grounding checks, under a daily spend cap.</li>
         <li><b>Point lookups go through Trino.</b> At 50k colleagues the recommended design adds a serving store that uses the same OPA policies.</li>
       </ul>
     </div>

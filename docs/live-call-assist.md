@@ -93,7 +93,10 @@ whole answer.
 **The after-call note.** When the call ends, Claude (`CALL_ASSIST_SUMMARY_MODEL`, Haiku
 4.5 by default) drafts the narrative: reason, what was found, what was agreed, follow-up,
 and any disclosed vulnerability. It sees the transcript, the guidance titles and the
-labels, never lakehouse data; code writes the caller, ID&V and audit lines around it. The
+labels, never lakehouse records. The caller's own words can carry personal details, so the
+transcript is redacted first: their name, postcode, customer id, dates (date of birth) and
+long digit runs (phone, card) become placeholders; amounts stay. Redaction is
+pattern-based, so best effort. Code writes the caller, ID&V and audit lines around it. The
 draft passes the grounding check or the template note is used, and the card says which
 (`✦ model · ms · tokens · ≈ $cost`, or `template note · AI draft not used: <reason>`).
 Measured: about 0.4k tokens in, 0.1k out, under $0.001 and ~1.8 s per call.
