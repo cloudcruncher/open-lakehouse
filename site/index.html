@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Open Lakehouse</title>
+<meta name="description" content="A governed open lakehouse for a bank, demonstrated through an AI assistant on live customer calls. Every claim is checked end to end in CI.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Schibsted+Grotesk:wght@600;700;800&display=swap">
+<style>
+:root {
+  --bg: #f2f6f8; --surface: #ffffff; --sunk: #e7eef2; --ink: #0e2233; --muted: #56697a; --line: #d3dde4;
+  --glacier: #0a6e7c; --glacier-soft: #d7ecef; --deep: #0d3a4d; --live: #c9502a; --ok: #2d7a4c; --warn: #9a6a12;
+  --water: #0d3a4d; --water-ink: #e4f1f4; --water-muted: #9dbcc6; --water-line: #1f5468;
+  --display: "Schibsted Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --sans: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0a141b; --surface: #0f1e28; --sunk: #0c1921; --ink: #e2ebf0; --muted: #8ea2b0; --line: #213746;
+    --glacier: #4cc0cd; --glacier-soft: #123540; --deep: #9fd8e0; --live: #ff8a5b; --ok: #62c98f; --warn: #e2b04a;
+    --water: #071f2b; --water-ink: #dcecf1; --water-muted: #86a9b5; --water-line: #1a4658;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0a141b; --surface: #0f1e28; --sunk: #0c1921; --ink: #e2ebf0; --muted: #8ea2b0; --line: #213746;
+  --glacier: #4cc0cd; --glacier-soft: #123540; --deep: #9fd8e0; --live: #ff8a5b; --ok: #62c98f; --warn: #e2b04a;
+  --water: #071f2b; --water-ink: #dcecf1; --water-muted: #86a9b5; --water-line: #1a4658;
+  color-scheme: dark;
+}
+[hidden] { display: none !important; }  /* component display rules must never override hidden */
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 16px/1.6 var(--sans); padding-inline: 20px; }
+a { color: var(--glacier); text-underline-offset: 3px; }
+a:hover { color: var(--ink); }
+:focus-visible { outline: 2px solid var(--glacier); outline-offset: 3px; border-radius: 4px; }
+.wrap { max-width: 1120px; margin-inline: auto; }
+h1, h2, h3 { font-family: var(--display); letter-spacing: -0.015em; text-wrap: balance; margin: 0; }
+h2 { font-size: clamp(1.6rem, 3vw, 2.2rem); line-height: 1.15; }
+h3 { font-size: 1.1rem; line-height: 1.3; }
+p { margin: 0; }
+.lede { color: var(--muted); max-width: 64ch; font-size: 1.05rem; }
+.eyebrow { font: 500 0.75rem/1 var(--mono); text-transform: uppercase; letter-spacing: 0.12em; color: var(--glacier); }
+code, .mono { font-family: var(--mono); font-size: 0.88em; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------------ top bar */
+.top { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-block: 18px; flex-wrap: wrap; }
+.brand { font: 800 1.05rem/1 var(--display); letter-spacing: -0.01em; display: flex; gap: 10px; align-items: center; color: var(--ink); text-decoration: none; }
+.brand svg { flex: none; }
+.top nav { display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.9rem; }
+.top nav a { color: var(--muted); text-decoration: none; }
+.top nav a:hover { color: var(--ink); }
+.badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.badge { font: 500 0.72rem/1 var(--mono); padding: 5px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--surface); white-space: nowrap; }
+.badge b { color: var(--ok); font-weight: 500; }
+
+/* ----------------------------------------------------------------- hero */
+.hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 48px; padding-block: 40px 64px; align-items: start; }
+.hero h1 { font-size: clamp(2.1rem, 4.6vw, 3.4rem); line-height: 1.04; margin-top: 14px; }
+.hero h1 em { font-style: normal; color: var(--live); }
+.hero .lede { margin-top: 20px; }
+.hero-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 32px; max-width: 520px; }
+.hero-stats div { border-top: 2px solid var(--ink); padding-top: 10px; }
+.hero-stats b { display: block; font: 700 1.7rem/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.hero-stats span { font-size: 0.82rem; color: var(--muted); line-height: 1.35; display: block; margin-top: 4px; }
+.cta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 32px; }
+.btn { display: inline-flex; align-items: center; gap: 8px; font: 600 0.92rem/1 var(--sans); padding: 12px 16px; border-radius: 8px; text-decoration: none; border: 1px solid var(--ink); color: var(--ink); background: transparent; cursor: pointer; }
+.btn.primary { background: var(--ink); color: var(--bg); }
+.btn.primary:hover { background: var(--glacier); border-color: var(--glacier); color: #fff; }
+.btn:hover { border-color: var(--glacier); color: var(--glacier); }
+
+/* The iceberg: what the colleague sees above the waterline, the platform below. */
+.berg { border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: var(--surface); }
+.tip { padding: 20px 22px 26px; }
+.tip .who { font: 500 0.72rem/1 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; display: flex; justify-content: space-between; gap: 8px; }
+.tip .who .live { color: var(--live); }
+.tip .who .live::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--live); margin-right: 6px; vertical-align: 1px; animation: pulse 1.6s infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+.tip h3 { margin-top: 12px; font-size: 1.12rem; }
+.tip p { margin-top: 6px; color: var(--muted); font-size: 0.93rem; }
+.tip .meta { display: flex; gap: 14px; margin-top: 12px; font: 500 0.78rem/1 var(--mono); color: var(--muted); flex-wrap: wrap; }
+.tip .meta .fast { color: var(--ok); }
+.waterline { display: block; width: 100%; height: 22px; margin-bottom: -1px; }
+.waterline path { fill: var(--water); }
+.below { background: var(--water); color: var(--water-ink); padding: 6px 22px 22px; }
+.below .label { font: 500 0.7rem/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--water-muted); display: flex; justify-content: space-between; gap: 8px; padding-block: 10px 14px; }
+.layers { list-style: none; margin: 0; padding: 0; display: grid; }
+.layers li { display: grid; grid-template-columns: 7.2rem minmax(0, 1fr); gap: 12px; padding-block: 9px; border-top: 1px solid var(--water-line); font-size: 0.85rem; }
+.layers li b { font: 600 0.78rem/1.4 var(--sans); color: var(--water-ink); }
+.layers li span { font: 400 0.76rem/1.45 var(--mono); color: var(--water-muted); overflow-wrap: anywhere; }
+.layers li span em { font-style: normal; color: var(--water-ink); }
+
+/* ---------------------------------------------------------------- sections */
+section { padding-block: 72px; border-top: 1px solid var(--line); }
+.sec-head { display: grid; gap: 12px; margin-bottom: 32px; }
+
+/* acts */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tab { font: 600 0.95rem/1 var(--sans); padding: 14px 16px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--glacier); }
+.tab small { font: 500 0.72rem/1 var(--mono); color: var(--glacier); margin-right: 8px; }
+.act { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 36px; padding-top: 32px; align-items: start; }
+.act figure { margin: 0; }
+.act img { width: 100%; border-radius: 10px; border: 1px solid var(--line); display: block; }
+.act figcaption { font-size: 0.82rem; color: var(--muted); margin-top: 10px; }
+.act ol, .act ul { margin: 14px 0 0; padding-left: 1.2rem; display: grid; gap: 10px; }
+.act li::marker { color: var(--glacier); font-family: var(--mono); font-size: 0.85em; }
+.proves { margin-top: 20px; display: flex; gap: 6px; flex-wrap: wrap; }
+.chip { font: 500 0.74rem/1 var(--mono); padding: 6px 9px; border-radius: 6px; background: var(--glacier-soft); color: var(--deep); }
+pre.cmd { margin: 18px 0 0; background: var(--sunk); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; font: 400 0.82rem/1.6 var(--mono); overflow-x: auto; }
+pre.cmd .c { color: var(--muted); }
+.stage { background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 10px; }
+.stage .row { display: grid; grid-template-columns: 6rem minmax(0, 1fr); gap: 12px; font-size: 0.88rem; align-items: baseline; }
+.stage .row b { font: 500 0.75rem/1.4 var(--mono); color: var(--muted); }
+.stage .row code { overflow-wrap: anywhere; }
+.ok-t { color: var(--ok); } .live-t { color: var(--live); } .warn-t { color: var(--warn); }
+
+/* architecture explorer */
+.explorer { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.diagram { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; overflow-x: auto; }
+.diagram svg { display: block; min-width: 640px; width: 100%; height: auto; }
+.paths { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.pathbtn { font: 500 0.8rem/1 var(--sans); padding: 8px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--muted); cursor: pointer; }
+.pathbtn[aria-pressed="true"] { border-color: var(--glacier); color: var(--glacier); background: var(--glacier-soft); }
+.pathbtn.live[aria-pressed="true"] { border-color: var(--live); color: var(--live); background: transparent; }
+svg .zone { fill: var(--sunk); stroke: var(--line); }
+svg .zone-t { font: 500 10px var(--mono); fill: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+svg .node rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; transition: stroke .15s, fill .15s; }
+svg .node text { font: 600 11.5px var(--sans); fill: var(--ink); pointer-events: none; }
+svg .node text.sub { font: 400 9.5px var(--mono); fill: var(--muted); }
+svg .node { cursor: pointer; outline: none; }
+svg .node:hover rect, svg .node:focus-visible rect { stroke: var(--glacier); }
+svg .node.sel rect { stroke: var(--glacier); stroke-width: 2.2; fill: var(--glacier-soft); }
+svg .node.dim { opacity: 0.35; }
+svg .edge { fill: none; stroke: var(--line); stroke-width: 1.4; marker-end: url(#arrow); transition: stroke .2s, opacity .2s; }
+svg .edge.on { stroke: var(--glacier); stroke-width: 2.2; marker-end: url(#arrow-on); }
+svg .edge.on.live { stroke: var(--live); marker-end: url(#arrow-live); }
+svg .edge.dim { opacity: 0.25; }
+svg .step { font: 600 9px var(--mono); fill: var(--bg); }
+svg .stepdot { fill: var(--glacier); }
+svg .stepdot.live { fill: var(--live); }
+#arrow path { fill: var(--line); } #arrow-on path { fill: var(--glacier); } #arrow-live path { fill: var(--live); }
+.detail { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; display: grid; gap: 12px; }
+.detail .kv { display: grid; grid-template-columns: 5.6rem minmax(0, 1fr); gap: 6px 12px; font-size: 0.88rem; }
+.detail .kv dt { font: 500 0.74rem/1.5 var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.detail .kv dd { margin: 0; }
+.detail .ver { font: 500 0.78rem/1 var(--mono); color: var(--glacier); }
+.pathsteps { margin: 0; padding-left: 1.3rem; display: grid; gap: 8px; font-size: 0.88rem; }
+.pathsteps li::marker { font: 600 0.8rem var(--mono); color: var(--glacier); }
+.pathsteps.live li::marker { color: var(--live); }
+.pathsteps b { font-weight: 600; }
+.pathsteps .t { font: 500 0.78rem/1 var(--mono); color: var(--muted); }
+
+/* proof table */
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 0.9rem; }
+th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 500 0.72rem/1.3 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); background: var(--sunk); }
+tr:last-child td { border-bottom: 0; }
+td.res { font-family: var(--mono); font-size: 0.82rem; white-space: nowrap; color: var(--ok); }
+
+/* chaos chart */
+.chaos { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+.chart { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px 18px 8px; overflow-x: auto; }
+.chart svg { display: block; width: 100%; min-width: 520px; height: auto; }
+.chart .lbl { font: 500 11.5px var(--mono); fill: var(--ink); }
+.chart .val { font: 500 11px var(--mono); fill: var(--muted); }
+.chart .tick { font: 400 10px var(--mono); fill: var(--muted); }
+.chart .grid { stroke: var(--line); stroke-width: 1; }
+.chart .bar-closed { fill: var(--glacier); }
+.chart .bar-serve { fill: var(--live); }
+.chart .bar-alone { fill: var(--muted); }
+.chart rect:hover { opacity: .8; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 0.82rem; color: var(--muted); margin-top: 8px; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.note { font-size: 0.9rem; color: var(--muted); display: grid; gap: 12px; }
+.note b { color: var(--ink); font-weight: 600; }
+
+/* scale calculator */
+.calc { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 32px; align-items: start; }
+.inputs { display: grid; gap: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 22px; }
+.field { display: grid; gap: 6px; }
+.field label { display: flex; justify-content: space-between; gap: 12px; font-size: 0.9rem; }
+.field output { font: 500 0.88rem/1 var(--mono); color: var(--glacier); font-variant-numeric: tabular-nums; }
+input[type="range"] { width: 100%; accent-color: var(--glacier); }
+.field small { color: var(--muted); font-size: 0.78rem; }
+.derived { display: grid; gap: 14px; }
+.kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.kpi { border-top: 2px solid var(--ink); padding-top: 10px; }
+.kpi b { display: block; font: 700 1.6rem/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.kpi span { font-size: 0.8rem; color: var(--muted); }
+.verdict { border-radius: 10px; padding: 16px 18px; border: 1px solid var(--line); background: var(--surface); font-size: 0.92rem; display: grid; gap: 8px; }
+.verdict .pill { justify-self: start; font: 600 0.72rem/1 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; padding: 6px 9px; border-radius: 999px; background: var(--glacier-soft); color: var(--deep); }
+.verdict.hot .pill { background: var(--live); color: #fff; }
+.meter { height: 8px; border-radius: 99px; background: var(--sunk); border: 1px solid var(--line); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--glacier); width: 0; transition: width .25s; }
+.verdict.hot .meter i { background: var(--live); }
+
+/* run + limits */
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; }
+.limits { margin: 0; padding-left: 1.1rem; display: grid; gap: 10px; color: var(--muted); font-size: 0.93rem; }
+.limits b { color: var(--ink); font-weight: 600; }
+.adrs { display: grid; gap: 8px; margin-top: 16px; font-size: 0.92rem; }
+.adrs a { display: grid; grid-template-columns: 3rem minmax(0, 1fr); gap: 8px; text-decoration: none; color: var(--ink); }
+.adrs a span { font: 500 0.8rem/1.6 var(--mono); color: var(--glacier); }
+.adrs a:hover { color: var(--glacier); }
+footer { border-top: 1px solid var(--line); padding-block: 28px 48px; color: var(--muted); font-size: 0.85rem; display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+
+@media (max-width: 900px) {
+  .hero, .act, .explorer, .chaos, .calc, .two { grid-template-columns: minmax(0, 1fr); }
+  .hero { gap: 36px; padding-block: 24px 48px; }
+  section { padding-block: 56px; }
+}
+@media (max-width: 520px) {
+  body { padding-inline: 16px; }
+  .hero-stats, .kpis { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .layers li { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .top nav { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <a class="brand" href="#top" aria-label="Open Lakehouse, top of page">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><path d="M13 3 L20 12 L6 12 Z" fill="currentColor"/><path d="M2 14 Q6.5 11.5 13 14 T24 14 L24 24 L2 24 Z" fill="var(--glacier)" opacity=".9"/><path d="M6 14 L20 14 L16 21 L9 21 Z" fill="var(--bg)" opacity=".55"/></svg>
+    Open Lakehouse
+  </a>
+  <nav aria-label="Sections">
+    <a href="#demo">Demo</a><a href="#architecture">Architecture</a><a href="#proof">Proof</a><a href="#chaos">Chaos</a><a href="#scale">Scale</a><a href="https://github.com/cloudcruncher/open-lakehouse">GitHub</a>
+  </nav>
+  <div class="badges" aria-label="Latest CI results">
+    <span class="badge">ci <b>passing</b></span><span class="badge">e2e <b>53/53</b></span><span class="badge">release <b>signed</b></span>
+  </div>
+</header>
+
+<main id="top">
+<div class="hero">
+  <div>
+    <p class="eyebrow">Governed open lakehouse · banking</p>
+    <h1>A payment made <em>a minute ago</em>, found in half a second, by an agent that sees only what its colleague may see.</h1>
+    <p class="lede">An open lakehouse (Iceberg, Polaris, Trino, OPA, Kafka, Spark) built around one hard consumer: an AI assistant on a bank colleague's live customer call. The assistant is the demo. The platform underneath is the point, so every answer shows how the platform produced it.</p>
+    <div class="hero-stats">
+      <div><b class="num">~10 s</b><span>source commit to visible for a colleague (CDC)</span></div>
+      <div><b class="num">53</b><span>end-to-end checks on every push, from an empty machine</span></div>
+      <div><b class="num">11/11</b><span>components killed and recovered with no data lost</span></div>
+    </div>
+    <div class="cta">
+      <a class="btn primary" href="#demo">See the three-act demo</a>
+      <a class="btn" href="https://github.com/cloudcruncher/open-lakehouse">Source on GitHub</a>
+    </div>
+  </div>
+
+  <figure class="berg" aria-label="One card from a live call, and the platform steps that produced it">
+    <div class="tip">
+      <div class="who"><span>Alice · contact centre · Meridian</span><span class="live">Live call</span></div>
+      <h3>Unrecognised payment located</h3>
+      <p>£249.99 to QuickTech Electronics Online, 10:26 UTC, status pending. Freeze the card now, then raise a fraud claim.</p>
+      <div class="meta"><span class="fast">⚡ 483 ms</span><span>CARD-FRAUD-01</span><span>ID&amp;V passed</span></div>
+    </div>
+    <svg class="waterline" viewBox="0 0 400 22" preserveAspectRatio="none" aria-hidden="true"><path d="M0 12 C 40 2, 80 20, 120 11 S 200 3, 240 12 S 320 20, 360 10 S 395 6, 400 9 L400 22 L0 22 Z"/></svg>
+    <div class="below">
+      <div class="label"><span>Below the waterline</span><span>how the platform answered</span></div>
+      <ol class="layers">
+        <li><b>Source</b><span>core banking Postgres commit → Debezium (WAL) → Kafka <em>corebank.core.transactions</em></span></li>
+        <li><b>Iceberg</b><span>snapshot <em>6170615646954925454</em>, committed by <em>cdc-stream</em> 35 s before the lookup</span></li>
+        <li><b>Trino</b><span>as <em>alice</em>, pinned <em>FOR VERSION AS OF</em> that snapshot · 1 row</span></li>
+        <li><b>OPA</b><span>row filter <em>brand IN ('Meridian')</em> · no PII columns read, so nothing to mask</span></li>
+        <li><b>Audit</b><span>row <em>#124</em>, chain hash <em>9d0053bffa6ba905…</em>, purpose CALL-5251D516</span></li>
+      </ol>
+    </div>
+  </figure>
+</div>
+
+<!-- ============================================================== DEMO -->
+<section id="demo" aria-labelledby="demo-h">
+  <div class="sec-head">
+    <p class="eyebrow">The demo</p>
+    <h2 id="demo-h">One platform, three consumers, three acts</h2>
+    <p class="lede">A platform is judged by what it lets people do safely. Each act uses the same tables and the same policy, seen from a different consumer.</p>
+  </div>
+  <div class="tabs" role="tablist" aria-label="Demo acts">
+    <button class="tab" role="tab" id="t-op" aria-controls="p-op" aria-selected="true"><small>Act 1</small>Operational</button>
+    <button class="tab" role="tab" id="t-an" aria-controls="p-an" aria-selected="false" tabindex="-1"><small>Act 2</small>Analytical</button>
+    <button class="tab" role="tab" id="t-re" aria-controls="p-re" aria-selected="false" tabindex="-1"><small>Act 3</small>Resilience</button>
+  </div>
+
+  <div class="act" role="tabpanel" id="p-op" aria-labelledby="t-op">
+    <figure>
+      <img src="img/live-call-assist.gif" alt="The Live Call Assist console during a card-fraud call: transcript, guidance cards, customer panel, and the platform x-ray of the card that found the payment" width="1080" height="645" loading="lazy">
+      <figcaption>Recorded from the running stack: a scripted caller, real CDC, real policy. It ends on the platform x-ray.</figcaption>
+    </figure>
+    <div>
+      <h3>A colleague on a live fraud call</h3>
+      <ol>
+        <li>The caller says their card was stolen. The assistant hears the intent and looks the caller up <b>with Alice's own token</b>.</li>
+        <li>Account cards stay locked until Alice confirms ID&amp;V. The agent can't get round policy: it asks the gateway, and the gateway asks OPA.</li>
+        <li>The payment written to core banking a minute ago is already in silver, and the assistant finds it.</li>
+        <li>Each card opens to show the snapshot, the Trino query, OPA's decision and the audit row behind it.</li>
+        <li>The injection call ("ignore your instructions…") gets nothing. Customer text is data, never instructions.</li>
+      </ol>
+      <div class="proves"><span class="chip">CDC freshness</span><span class="chip">row + column security</span><span class="chip">on-behalf-of</span><span class="chip">time travel</span><span class="chip">audit chain</span></div>
+      <pre class="cmd"><span class="c"># open http://localhost:8090, sign in as alice</span>
+make live-demo</pre>
+    </div>
+  </div>
+
+  <div class="act" role="tabpanel" id="p-an" aria-labelledby="t-an" hidden>
+    <div class="stage" aria-label="The same customer seen by three people">
+      <div class="row"><b>alice</b><code>phone ******4578 · Meridian only · vulnerability shown</code></div>
+      <div class="row"><b>bob</b><code>phone in clear · Meridian + Northgate (complaints team)</code></div>
+      <div class="row"><b>carol</b><code>contact details NULL · all brands · silver <span class="warn-t">denied</span></code></div>
+      <div class="row"><b>time travel</b><code>SELECT … FROM silver.transactions FOR VERSION AS OF 6170615646954925454</code></div>
+      <div class="row"><b>lineage</b><code>gold.customer_360 ← silver.* ← bronze.cdc_events (OpenLineage → Marquez)</code></div>
+    </div>
+    <div>
+      <h3>An analyst on the same tables</h3>
+      <ol>
+        <li>Carol queries gold in Trino or Grafana. She gets aggregates across every brand and no way to identify anyone.</li>
+        <li>She can't infer a hidden column by filtering on it: masks apply before predicates.</li>
+        <li>"What did the assistant see at 10:26?" is one query: any answer's snapshot id reproduces it exactly.</li>
+        <li>Marquez shows where <code>customer_360</code> came from. Dagster shows the WAP checks that had to pass before it was published.</li>
+      </ol>
+      <div class="proves"><span class="chip">one policy, every engine</span><span class="chip">WAP data product</span><span class="chip">lineage</span><span class="chip">contracts as code</span></div>
+      <pre class="cmd">make sql U=carol Q="SELECT brand, count(*) FROM lakehouse.gold.customer_360 GROUP BY 1"
+make sql U=carol Q="SELECT * FROM lakehouse.silver.accounts"  <span class="c"># denied by OPA</span></pre>
+    </div>
+  </div>
+
+  <div class="act" role="tabpanel" id="p-re" aria-labelledby="t-re" hidden>
+    <div class="stage" aria-label="What happens when the stream is killed mid-call">
+      <div class="row"><b>t = 0 s</b><code>docker kill cdc-stream <span class="live-t">(kill -9, mid-call)</span></code></div>
+      <div class="row"><b>during</b><code>console keeps serving · reads fine · freshness paused</code></div>
+      <div class="row"><b>t ≈ 25 s</b><code>healer restarts it · checkpoint resumes at the last Kafka offset</code></div>
+      <div class="row"><b>after</b><code>change made during the outage arrives <span class="ok-t">(no loss)</span> · audit chain intact</code></div>
+    </div>
+    <div>
+      <h3>Break it on purpose</h3>
+      <ol>
+        <li>Kill the stream in the middle of a call. The colleague keeps working on data that's a few seconds older.</li>
+        <li>Kill OPA, Trino or Polaris instead, and the platform <b>fails closed</b>: "data temporarily unavailable", never unmasked data.</li>
+        <li>Every one of 11 components recovers by itself. Idempotent bronze writes and MERGEs mean replays don't duplicate.</li>
+      </ol>
+      <div class="proves"><span class="chip">fail closed</span><span class="chip">exactly-once effect</span><span class="chip">self-healing</span><span class="chip">SLO burn-rate alerts</span></div>
+      <pre class="cmd">make chaos   <span class="c"># kills each component in turn and measures it</span></pre>
+    </div>
+  </div>
+</section>
+
+<!-- ====================================================== ARCHITECTURE -->
+<section id="architecture" aria-labelledby="arch-h">
+  <div class="sec-head">
+    <p class="eyebrow">Architecture explorer</p>
+    <h2 id="arch-h">Every component, what it does, and how we know it works</h2>
+    <p class="lede">Select a component, or trace one of the two paths that matter: how a payment reaches the lakehouse, and how a question on a call is answered.</p>
+  </div>
+  <div class="explorer">
+    <div>
+      <div class="paths" role="group" aria-label="Highlight a path">
+        <button class="pathbtn live" data-path="data" aria-pressed="false">Data path: a payment, commit to silver</button>
+        <button class="pathbtn" data-path="request" aria-pressed="false">Request path: a question on a call</button>
+        <button class="pathbtn" data-path="none" aria-pressed="true">Show everything</button>
+      </div>
+      <div class="diagram">
+        <svg id="arch" viewBox="0 0 760 470" role="img" aria-labelledby="arch-title">
+          <title id="arch-title">Architecture: core banking to Kafka and Spark into Iceberg; Trino with OPA serves the MCP gateway, analysts and dashboards</title>
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+            <marker id="arrow-on" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+            <marker id="arrow-live" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+          </defs>
+          <rect class="zone" x="8" y="8" width="150" height="454" rx="10"/><text class="zone-t" x="20" y="28">Sources</text>
+          <rect class="zone" x="172" y="8" width="150" height="454" rx="10"/><text class="zone-t" x="184" y="28">Streaming</text>
+          <rect class="zone" x="336" y="8" width="170" height="454" rx="10"/><text class="zone-t" x="348" y="28">Lakehouse</text>
+          <rect class="zone" x="520" y="8" width="232" height="454" rx="10"/><text class="zone-t" x="532" y="28">Serve · govern · consume</text>
+          <g id="edges"></g>
+          <g id="nodes"></g>
+          <g id="steps"></g>
+        </svg>
+      </div>
+    </div>
+    <aside class="detail" id="detail" aria-live="polite"></aside>
+  </div>
+</section>
+
+<!-- ============================================================= PROOF -->
+<section id="proof" aria-labelledby="proof-h">
+  <div class="sec-head">
+    <p class="eyebrow">Proof, not claims</p>
+    <h2 id="proof-h">What is checked, and where</h2>
+    <p class="lede">Each row is an assertion in <code>make verify</code>, <code>make chaos</code>, the eval gate or CI. They run from an empty machine on every push to main.</p>
+  </div>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th scope="col">Capability</th><th scope="col">How it is proven</th><th scope="col">Result</th></tr></thead>
+      <tbody>
+        <tr><td>Fresh data for live calls</td><td>Write to core banking, poll as a colleague until visible (<code>freshness_probe.py</code>); the fraud payment written seconds earlier is pinpointed by the agent</td><td class="res">~10 s · &lt; 60 s SLO</td></tr>
+        <tr><td>Row-level security by brand</td><td>alice, bob and carol run the same query and get different brands</td><td class="res">3/3 pass</td></tr>
+        <tr><td>Column masking by persona</td><td>Phone partial for alice, clear for bob, NULL for carol; carol can't infer a masked column by filtering on it</td><td class="res">4/4 pass</td></tr>
+        <tr><td>Agents inherit the colleague's rights</td><td>Token exchange (RFC 8693) so Trino sees the colleague; the agent's answers carry alice's masks; an analyst's agent identifies no one</td><td class="res">pass</td></tr>
+        <tr><td>Reproducible answers</td><td>Every gateway answer is pinned to an Iceberg snapshot and carries OPA's decision and its audit row</td><td class="res">3/3 pass</td></tr>
+        <tr><td>Tamper-evident audit</td><td>Hash chain verified; DELETE on the audit log is refused; denied calls are audited too</td><td class="res">pass</td></tr>
+        <tr><td>Bad data never reaches silver</td><td>ODCS contracts, quarantine with reasons, WAP publish only after checks; late parents are retried, not dropped</td><td class="res">0 violations</td></tr>
+        <tr><td>Safe AI guidance</td><td>Offline eval gate: intent/vulnerability/risk recall, 8 scripted calls, zero ungrounded cards; injection rejected before any SQL</td><td class="res">8/8 · 0 ungrounded</td></tr>
+        <tr><td>Operable</td><td>Every scrape target up (Trino via a machine identity), 20 SLO and burn-rate rules loaded, dashboards from code, Dagster behind SSO</td><td class="res">pass</td></tr>
+        <tr><td>Supply chain</td><td>Actions pinned by SHA, gitleaks over full history, Trivy, SBOM + provenance, cosign keyless signatures on GHCR images</td><td class="res">signed</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================= CHAOS -->
+<section id="chaos" aria-labelledby="chaos-h">
+  <div class="sec-head">
+    <p class="eyebrow">Chaos results</p>
+    <h2 id="chaos-h">Kill each component. Measure what the colleague sees, and time to recover.</h2>
+  </div>
+  <div class="chaos">
+    <div class="chart">
+      <svg id="chaos-chart" viewBox="0 0 560 330" role="img" aria-labelledby="chaos-title"><title id="chaos-title">Time to recover in seconds for each of 11 components after kill -9</title></svg>
+      <div class="legend">
+        <span><i style="background:var(--glacier)"></i>fails closed (no data rather than wrong data)</span>
+        <span><i style="background:var(--live)"></i>keeps serving, freshness pauses</span>
+        <span><i style="background:var(--muted)"></i>isolated (console only)</span>
+      </div>
+    </div>
+    <div class="note">
+      <p><b>Fail closed is the design, not an accident.</b> With OPA, Trino, Polaris or storage down, the assistant says data is temporarily unavailable. It never falls back to unfiltered data, and it tells the colleague not to guess.</p>
+      <p><b>Streaming parts degrade gracefully.</b> With Kafka, Debezium or the stream down, reads keep working on slightly older data. A change made during the outage arrives after recovery: the replication slot holds WAL, the checkpoint holds offsets, and writes are idempotent.</p>
+      <p><b>Recovery is automatic.</b> Restart policies plus a reconciler that restores desired state, including restarting failed connector tasks. The audit chain is verified intact after every run.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================= SCALE -->
+<section id="scale" aria-labelledby="scale-h">
+  <div class="sec-head">
+    <p class="eyebrow">Scale calculator</p>
+    <h2 id="scale-h">What 50,000 colleagues means for the architecture</h2>
+    <p class="lede">The laptop proves behaviour. Capacity comes from a load model. Move the assumptions and see which design decision the load forces.</p>
+  </div>
+  <div class="calc">
+    <form class="inputs" id="calc" aria-label="Load assumptions">
+      <div class="field"><label for="c-coll">Colleagues <output id="o-coll" for="c-coll"></output></label><input id="c-coll" type="range" min="5000" max="100000" step="5000" value="50000"></div>
+      <div class="field"><label for="c-cc">In the contact centre <output id="o-cc" for="c-cc"></output></label><input id="c-cc" type="range" min="5" max="40" step="1" value="20"></div>
+      <div class="field"><label for="c-peak">On a live call at peak (of those on shift) <output id="o-peak" for="c-peak"></output></label><input id="c-peak" type="range" min="20" max="90" step="5" value="60"><small>About half the contact centre is on shift at peak.</small></div>
+      <div class="field"><label for="c-len">Average call length <output id="o-len" for="c-len"></output></label><input id="c-len" type="range" min="3" max="20" step="1" value="8"></div>
+      <div class="field"><label for="c-tools">Data lookups per call <output id="o-tools" for="c-tools"></output></label><input id="c-tools" type="range" min="4" max="30" step="1" value="13"><small>About 6 in the first minute, then about 1 a minute.</small></div>
+    </form>
+    <div class="derived" aria-live="polite">
+      <div class="kpis">
+        <div class="kpi"><b id="k-calls">–</b><span>simultaneous live calls</span></div>
+        <div class="kpi"><b id="k-rps">–</b><span>lookups per second, steady</span></div>
+        <div class="kpi"><b id="k-burst">–</b><span>lookups per second, call-start bursts</span></div>
+      </div>
+      <div class="verdict" id="verdict">
+        <span class="pill" id="v-pill"></span>
+        <div class="meter" aria-hidden="true"><i id="v-meter"></i></div>
+        <p id="v-text"></p>
+      </div>
+      <p class="note">Other constants in the model: 500 concurrent analysts at one query per 10 s (about 50/s, cacheable); 64+ transcript partitions for thousands of concurrent calls; OPA as a sidecar with signed bundles so policy never needs a network hop. Details in <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/scale.md">docs/scale.md</a>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================== RUN + LIMITS -->
+<section id="run" aria-labelledby="run-h">
+  <div class="two">
+    <div>
+      <p class="eyebrow">Run it yourself</p>
+      <h2 id="run-h" style="margin-top:12px">From zero to a live call in one command</h2>
+      <pre class="cmd"><span class="c"># Docker with ~12 GB, uv, make</span>
+git clone https://github.com/cloudcruncher/open-lakehouse
+cd open-lakehouse
+make demo        <span class="c"># up, seed, pipelines, 53 checks</span>
+make urls        <span class="c"># console, Grafana, Dagster, lineage</span>
+make live-demo   <span class="c"># play every demo call as alice</span>
+make chaos       <span class="c"># break it on purpose</span></pre>
+      <div class="adrs" aria-label="Architecture decision records">
+        <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/adr/0002-two-layer-authorization.md"><span>0002</span>Two-layer authorization: catalog grants and query policy</a>
+        <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/adr/0003-agents-act-on-behalf-of-colleagues.md"><span>0003</span>Agents act on behalf of colleagues</a>
+        <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/adr/0006-cdc-streaming-with-a-single-writer-lease.md"><span>0006</span>CDC streaming with a single-writer lease</a>
+        <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/adr/0007-live-call-assist-model-proposes-policy-disposes.md"><span>0007</span>The model proposes, policy disposes</a>
+        <a href="https://github.com/cloudcruncher/open-lakehouse/tree/main/docs/adr"><span>all</span>Nine decision records</a>
+      </div>
+    </div>
+    <div>
+      <p class="eyebrow">Limits</p>
+      <h2 style="margin-top:12px">What this is not (yet)</h2>
+      <ul class="limits" style="margin-top:18px">
+        <li><b>One machine.</b> High availability, multi-AZ Kafka and Trino clusters are designed in <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/scale.md">scale.md</a>, not run here.</li>
+        <li><b>Synthetic data.</b> 20,000 generated customers and scripted calls. Nothing is real.</li>
+        <li><b>Speech-to-text is simulated.</b> Transcripts arrive on Kafka as a contact-centre platform would send them.</li>
+        <li><b>Rules-first understanding.</b> Claude is used for extraction only when an API key is set, and its output is still bound by the same policy and grounding checks.</li>
+        <li><b>Point lookups go through Trino.</b> At 50k colleagues the recommended design adds a serving store that uses the same OPA policies.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <span>Open Lakehouse · built and verified locally and in GitHub Actions</span>
+  <span><a href="https://github.com/cloudcruncher/open-lakehouse">github.com/cloudcruncher/open-lakehouse</a></span>
+</footer>
+</div>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const svgNS = "http://www.w3.org/2000/svg";
+  const mk = (tag, attrs = {}, parent) => {
+    const e = document.createElementNS(svgNS, tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    if (parent) parent.appendChild(e);
+    return e;
+  };
+
+  // ------------------------------------------------------------------ tabs
+  const tabs = [...document.querySelectorAll('[role="tab"]')];
+  const select = (t) => {
+    for (const x of tabs) {
+      const on = x === t;
+      x.setAttribute("aria-selected", on); x.tabIndex = on ? 0 : -1;
+      document.getElementById(x.getAttribute("aria-controls")).hidden = !on;
+    }
+  };
+  tabs.forEach((t, i) => {
+    t.addEventListener("click", () => select(t));
+    t.addEventListener("keydown", (e) => {
+      const d = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
+      if (d) { const n = tabs[(i + d + tabs.length) % tabs.length]; select(n); n.focus(); }
+    });
+  });
+
+  // ---------------------------------------------------------- architecture
+  const N = {
+    pg:      { x: 20,  y: 60,  t: "Core banking", s: "Postgres 17", ver: "postgres:17", role: "The source system: customers, accounts, transactions, complaints. Logical replication through an explicit publication; the CDC user can read only the published tables.", why: "Real banks start from an OLTP system of record. CDC off the WAL means no load on application queries and no dual writes.", proof: "Replication slot active and consumed (verify). Killed in chaos: recovered in 4 s." },
+    cc:      { x: 20,  y: 330, t: "Contact centre", s: "call-sim · STT", ver: "platform image", role: "Stands in for telephony and speech-to-text. Emits transcript utterances to Kafka and writes the story's world events (the fraud payment) to core banking.", why: "Keeps the demo honest: the payment really goes through CDC, it is not injected into the lakehouse.", proof: "Every demo call produces a real source commit that the agent later finds." },
+    dbz:     { x: 184, y: 60,  t: "Debezium", s: "3.6.3 · pgoutput", ver: "quay.io/debezium/connect:3.6.3.Final", role: "Reads the WAL and publishes one change event per row change, with the source LSN, to Kafka.", why: "Log-based CDC is ordered, complete and catches deletes, unlike polling by timestamp. snapshot.mode=no_data avoids re-reading history already in bronze.", proof: "Connector and task RUNNING (verify). Killed in chaos: change made during the outage still arrived; 29 s to recover." },
+    kafka:   { x: 184, y: 195, t: "Kafka", s: "4.3.1 · KRaft", ver: "apache/kafka:4.3.1", role: "Durable log for CDC topics and call transcripts; topics declared up front by kafka-init.", why: "Decouples source, stream and agent; replayable; one consumer group per purpose.", proof: "Killed in chaos: reads kept serving, no loss; 30 s to recover." },
+    spark:   { x: 184, y: 330, t: "Spark stream", s: "10 s micro-batch", ver: "Spark 3.5 · Iceberg 1.11", role: "Every 10 s: append raw changes to bronze.cdc_events (idempotent by batch id), then per entity apply the silver contract and MERGE. Orphans wait for their parent instead of being dropped.", why: "Micro-batches give exactly-once effect with simple operations; Flink is the upgrade path if sub-second is needed.", proof: "Freshness < 60 s asserted, ~10 s measured. Holds the silver single-writer lease, so batch defers to it." },
+    bronze:  { x: 350, y: 60,  t: "bronze", s: "raw changelog", ver: "Iceberg v2 · zstd", role: "Immutable record of what the source said: CDC events and batch JDBC extracts.", why: "Replay and audit. Nobody reads bronze through SQL, not even an admin (Polaris grants).", proof: "admin cannot read bronze via SQL (verify)." },
+    silver:  { x: 350, y: 150, t: "silver", s: "contract · MERGE", ver: "Iceberg v2 · MERGE", role: "Conformed, typed, deduplicated entities. Brand denormalised onto every row so row filters prune cheaply.", why: "One place where the data contract holds. Bad rows go to ops.quarantine with reasons; late children retry.", proof: "No contract-violating rows reached silver (verify)." },
+    gold:    { x: 350, y: 240, t: "gold", s: "customer_360", ver: "Iceberg v2 · WAP", role: "The data product: one row per customer, published through write-audit-publish only after checks pass.", why: "Consumers read a table that is always consistent; failed checks never become visible.", proof: "Row count equals silver customers; gold waits for the stream to catch up before it builds." },
+    polaris: { x: 350, y: 330, t: "Polaris", s: "REST catalog", ver: "apache/polaris:1.7.0", role: "Catalog and first authorization layer. Vends short-lived, table-scoped storage credentials; engines never hold storage keys.", why: "An open REST catalog any engine can use; grants per principal; credential vending.", proof: "Killed in chaos: failed closed; 8 s to recover." },
+    rustfs:  { x: 350, y: 405, t: "Object storage", s: "RustFS (S3 API)", ver: "rustfs/rustfs:1.0.0", role: "Parquet data and Iceberg metadata. Stands in for S3 or ADLS.", why: "S3-compatible and light enough for a laptop; nothing depends on it being RustFS.", proof: "Killed in chaos: failed closed; 12 s to recover." },
+    trino:   { x: 535, y: 60,  t: "Trino", s: "483 · JWT", ver: "trinodb/trino:483", role: "The only SQL door for people and agents. Authenticates Keycloak JWTs and asks OPA about every table, row and column.", why: "One enforcement point for BI, notebooks and agents alike.", proof: "Writes via Trino denied (verify). Killed in chaos: failed closed; 17 s to recover." },
+    opa:     { x: 650, y: 60,  t: "OPA", s: "policy as code", ver: "openpolicyagent/opa:1.21.0", role: "Policy as code: brand row filters and PII masks by tag and persona, default deny. The gateway asks it the same questions to explain each answer.", why: "Rules live in Rego with 25 unit tests, not in each app.", proof: "Policy tests 25/25; policy tags agree with data contracts. Killed in chaos: failed closed; 12 s." },
+    mcp:     { x: 535, y: 150, t: "MCP gateway", s: "on-behalf-of", ver: "platform image", role: "Governed tools for agents. Exchanges the colleague's token (RFC 8693), pins each query to a snapshot, rate limits, circuit breaker, and writes a hash-chained audit row.", why: "Agents get exactly the colleague's rights and nothing more; every access is explainable afterwards.", proof: "Unauthenticated call rejected, purpose mandatory, injection rejected before SQL, answers pinned and audited (verify)." },
+    kc:      { x: 650, y: 150, t: "Keycloak", s: "SSO · exchange", ver: "quay.io/keycloak/keycloak:26.7.4", role: "Identity for colleagues, machines and UIs (PKCE for the console, SSO for Grafana, Dagster and Marquez).", why: "One identity across SQL, agents and tools, so policy can key on the person.", proof: "Killed in chaos: sign-in unavailable, nothing served unauthenticated; 27 s." },
+    assist:  { x: 535, y: 250, t: "Live Call Assist", s: "per-call agent", ver: "platform image", role: "Consumes transcripts, extracts signals (rules, plus Claude when a key is set), plans tool calls with fixed policy, grounds every card in evidence, and shows the platform x-ray.", why: "The model proposes; policy disposes. No free-form tool use, no ungrounded facts on screen.", proof: "Eval gate 8/8, zero ungrounded cards. Killed in chaos: console only; 4 s." },
+    bi:      { x: 650, y: 250, t: "Analysts · BI", s: "Trino · Grafana", ver: "grafana/grafana:13.0.9", role: "Carol's view: aggregates across brands with PII masked or null; SLO dashboards generated from code.", why: "Same tables and same policy as the agent, a different consumer.", proof: "carol denied silver; cannot infer masked columns (verify)." },
+    ops:     { x: 535, y: 350, t: "Dagster · Marquez", s: "jobs · lineage", ver: "Dagster 1.13 · Marquez 0.51", role: "Batch pipelines with WAP checks as asset checks; OpenLineage from every Spark job into Marquez.", why: "Operators see what ran, what was checked and where data came from.", proof: "13 assets, 19 WAP checks, 3 schedules; gold traces back to silver (verify)." },
+    obs:     { x: 650, y: 350, t: "Prometheus", s: "SLOs · burn rate", ver: "prom/prometheus:v3.15.0", role: "Scrapes every service (Trino with a machine identity OPA limits to system metrics). SLO recording rules and multi-window burn-rate alerts.", why: "Alert on user-visible pain (freshness, tool errors, latency), not on CPU.", proof: "Every scrape target up; 20 rules loaded (verify)." },
+  };
+  const W = 100, H = 46;
+  const E = [
+    ["pg", "dbz"], ["dbz", "kafka"], ["cc", "kafka"], ["cc", "pg"], ["kafka", "spark"], ["kafka", "assist"],
+    ["spark", "bronze"], ["spark", "silver"], ["bronze", "silver"], ["silver", "gold"],
+    ["polaris", "rustfs"], ["trino", "polaris"], ["trino", "opa"], ["mcp", "trino"], ["mcp", "kc"],
+    ["assist", "mcp"], ["bi", "trino"], ["ops", "gold"], ["obs", "trino"],
+  ];
+  const PATHS = {
+    data: { live: true, title: "Data path: a payment reaches the lakehouse", nodes: ["cc", "pg", "dbz", "kafka", "spark", "bronze", "silver"],
+      edges: [["cc", "pg", 1], ["pg", "dbz", 2], ["dbz", "kafka", 2], ["kafka", "spark", 3], ["spark", "bronze", 3], ["spark", "silver", 4]],
+      steps: [
+        ["Payment committed in core banking", "t = 0"],
+        ["Debezium reads it from the WAL, publishes to corebank.core.transactions", "< 1 s"],
+        ["Next 10 s trigger picks it up; raw event appended to bronze.cdc_events (idempotent by batch id)", "≤ 10 s"],
+        ["Contract checked; MERGE into silver.transactions as an Iceberg commit by cdc-stream", "~2 s"],
+        ["Visible to Trino, and to the agent, as a new snapshot", "~10 s total"],
+      ] },
+    request: { live: false, title: "Request path: the caller says their card was stolen", nodes: ["cc", "kafka", "assist", "mcp", "kc", "trino", "opa", "polaris", "rustfs", "silver"],
+      edges: [["cc", "kafka", 1], ["kafka", "assist", 1], ["assist", "mcp", 2], ["mcp", "kc", 3], ["mcp", "trino", 4], ["trino", "opa", 5], ["trino", "polaris", 5], ["polaris", "rustfs", 5]],
+      steps: [
+        ["Utterance arrives on the transcript topic; signals extracted (card fraud)", "~50 ms"],
+        ["Planner picks get_recent_transactions; calls the gateway with Alice's token", ""],
+        ["Gateway exchanges the token so Trino sees alice, not a service", ""],
+        ["Resolves silver.transactions' main snapshot; runs the query pinned to it", ""],
+        ["OPA applies brand IN ('Meridian') and masks; Polaris vends table-scoped credentials", ""],
+        ["Audit row written (hash chain); card grounded in the rows returned and shown with its x-ray", "~480 ms total"],
+      ] },
+  };
+
+  const svg = $("#arch"), gE = $("#edges"), gN = $("#nodes"), gS = $("#steps");
+  const center = (k) => ({ x: N[k].x + W / 2, y: N[k].y + H / 2 });
+  // Edge from box border to box border, so arrowheads stay visible.
+  const clip = (a, b) => {
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const sx = (W / 2 + 4) / Math.abs(dx || 1e-9), sy = (H / 2 + 4) / Math.abs(dy || 1e-9);
+    const s = Math.min(sx, sy);
+    return { x: a.x + dx * s, y: a.y + dy * s };
+  };
+  const edgeEls = {};
+  for (const [a, b] of E) {
+    const A = center(a), B = center(b), p = clip(A, B), q = clip(B, A);
+    edgeEls[`${a}>${b}`] = mk("line", { class: "edge", x1: p.x, y1: p.y, x2: q.x, y2: q.y }, gE);
+  }
+  const nodeEls = {};
+  for (const [k, n] of Object.entries(N)) {
+    const g = mk("g", { class: "node", tabindex: 0, role: "button", "aria-label": `${n.t}: ${n.s}`, "data-k": k }, gN);
+    mk("rect", { x: n.x, y: n.y, width: W, height: H, rx: 8 }, g);
+    mk("text", { x: n.x + 10, y: n.y + 19 }, g).textContent = n.t;
+    mk("text", { class: "sub", x: n.x + 10, y: n.y + 34 }, g).textContent = n.s;
+    g.addEventListener("click", () => showNode(k));
+    g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); showNode(k); } });
+    nodeEls[k] = g;
+  }
+
+  const detail = $("#detail");
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  function showNode(k) {
+    const n = N[k];
+    for (const [kk, el] of Object.entries(nodeEls)) el.classList.toggle("sel", kk === k);
+    detail.innerHTML = `<p class="eyebrow">Component</p><h3>${esc(n.t)}</h3><span class="ver">${esc(n.ver)}</span>
+      <dl class="kv"><dt>Does</dt><dd>${esc(n.role)}</dd><dt>Why</dt><dd>${esc(n.why)}</dd><dt>Proof</dt><dd>${esc(n.proof)}</dd></dl>`;
+  }
+  function showPath(name) {
+    document.querySelectorAll(".pathbtn").forEach((b) => b.setAttribute("aria-pressed", b.dataset.path === name));
+    gS.replaceChildren();
+    const P = PATHS[name];
+    for (const [key, el] of Object.entries(edgeEls)) {
+      const on = P && P.edges.some(([a, b]) => `${a}>${b}` === key);
+      el.classList.toggle("on", !!on); el.classList.toggle("live", !!(on && P.live)); el.classList.toggle("dim", !!(P && !on));
+    }
+    for (const [k, el] of Object.entries(nodeEls)) { el.classList.toggle("dim", !!(P && !P.nodes.includes(k))); el.classList.remove("sel"); }
+    if (!P) { showNode("mcp"); return; }
+    P.edges.forEach(([a, b, step]) => {
+      const A = center(a), B = center(b), m = { x: (A.x + B.x) / 2, y: (A.y + B.y) / 2 };
+      mk("circle", { class: `stepdot${P.live ? " live" : ""}`, cx: m.x, cy: m.y, r: 8 }, gS);
+      const t = mk("text", { class: "step", x: m.x, y: m.y + 3, "text-anchor": "middle" }, gS); t.textContent = step;
+    });
+    detail.innerHTML = `<p class="eyebrow">${P.live ? "Data path" : "Request path"}</p><h3>${esc(P.title)}</h3>
+      <ol class="pathsteps${P.live ? " live" : ""}">${P.steps.map(([s, t]) => `<li><b>${esc(s)}</b>${t ? ` <span class="t">${esc(t)}</span>` : ""}</li>`).join("")}</ol>
+      <p class="lede" style="font-size:.85rem">Numbers on the diagram match the steps above.</p>`;
+  }
+  document.querySelectorAll(".pathbtn").forEach((b) => b.addEventListener("click", () => showPath(b.dataset.path)));
+  showNode("mcp");
+
+  // ------------------------------------------------------------ chaos chart
+  const chaos = [
+    ["opa", 12, "closed"], ["trino", 17, "closed"], ["polaris", 8, "closed"], ["keycloak", 27, "closed"],
+    ["postgres", 4, "closed"], ["rustfs", 12, "closed"], ["mcp-gateway", 7, "closed"],
+    ["kafka", 30, "serve"], ["cdc-connect", 29, "serve"], ["cdc-stream", 25, "serve"], ["call-assist", 4, "alone"],
+  ];
+  const cs = $("#chaos-chart"), L = 104, R = 520, top = 12, row = 26, max = 30;
+  const x = (v) => L + (v / max) * (R - L);
+  for (let v = 0; v <= max; v += 5) {
+    mk("line", { class: "grid", x1: x(v), x2: x(v), y1: top - 4, y2: top + chaos.length * row }, cs);
+    mk("text", { class: "tick", x: x(v), y: top + chaos.length * row + 16, "text-anchor": "middle" }, cs).textContent = v === max ? `${v} s` : v;
+  }
+  chaos.forEach(([name, s, kind], i) => {
+    const y = top + i * row;
+    mk("text", { class: "lbl", x: L - 10, y: y + 15, "text-anchor": "end" }, cs).textContent = name;
+    const r = mk("rect", { class: `bar-${kind}`, x: L, y: y + 5, width: Math.max(2, x(s) - L), height: 14, rx: 3 }, cs);
+    mk("title", {}, r).textContent = `${name}: recovered in ${s} s`;
+    mk("text", { class: "val", x: x(s) + 6, y: y + 16 }, cs).textContent = `${s} s`;
+  });
+  mk("text", { class: "tick", x: L, y: top + chaos.length * row + 34 }, cs).textContent = "time to recover after kill -9 (local run; restart policy + reconciler)";
+
+  // --------------------------------------------------------- scale calculator
+  const f = (id) => Number(document.getElementById(id).value);
+  const fmt = (n) => n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : `${Math.round(n)}`;
+  function calc() {
+    const coll = f("c-coll"), cc = f("c-cc") / 100, peak = f("c-peak") / 100, len = f("c-len"), tools = f("c-tools");
+    $("#o-coll").textContent = coll.toLocaleString("en-GB");
+    $("#o-cc").textContent = `${Math.round(cc * 100)}%`;
+    $("#o-peak").textContent = `${Math.round(peak * 100)}%`;
+    $("#o-len").textContent = `${len} min`;
+    $("#o-tools").textContent = tools;
+    const calls = coll * cc * 0.5 * peak;          // half the contact centre on shift at peak
+    const perHour = calls * (60 / len) * tools;
+    const rps = perHour / 3600;
+    const burst = rps * 3.1;                        // call starts cluster: ~6 lookups in the first minute
+    $("#k-calls").textContent = fmt(calls);
+    $("#k-rps").textContent = Math.round(rps);
+    $("#k-burst").textContent = Math.round(burst);
+    const v = $("#verdict"), hot = burst > 100;
+    v.classList.toggle("hot", hot);
+    $("#v-pill").textContent = hot ? "Add a serving store" : "Trino is enough";
+    $("#v-meter").style.width = `${Math.min(100, (burst / 400) * 100)}%`;
+    $("#v-text").textContent = hot
+      ? `Bursts of ~${Math.round(burst)} lookups/s exceed what one Trino agents-cluster serves comfortably (~100/s at p99 < 1 s). Sync customer_360 into a low-latency store on every gold publish, and have the gateway evaluate the same OPA policies. The lakehouse stays the source of truth; one policy source.`
+      : `~${Math.round(burst)} lookups/s at peak fits a dedicated Trino agents-cluster behind Trino Gateway with file-system and metadata caching. One enforcement point, nothing extra to run.`;
+  }
+  document.querySelectorAll("#calc input").forEach((i) => i.addEventListener("input", calc));
+  $("#calc").addEventListener("submit", (e) => e.preventDefault());
+  calc();
+})();
+</script>
+</body>
+</html>

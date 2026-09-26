@@ -20,3 +20,4 @@ __pycache__/
 *.sarif
 state.txt
 logs.txt
+site/img/
