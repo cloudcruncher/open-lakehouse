@@ -675,6 +675,13 @@ class CallSession:
         LATENCY.labels(card.kind).observe(card.latency_ms / 1000)
         await self.emit({"type": "card", "card": asdict(card) | {"priority": card.priority}})
 
+    def _caller_names(self) -> list[str]:
+        names = [self.signals.full_name, self.signals.last_name]
+        names += (self.signals.full_name or "").split()
+        if self.customer:
+            names += [self.customer.get("first_name"), self.customer.get("last_name")]
+        return [n for n in names if n]
+
     async def _wrap_up(self) -> Card:
         """After-call note: drafted for the colleague to check and save, not saved automatically.
 
@@ -713,6 +720,8 @@ class CallSession:
             },
             self.verified,
             evidence,
+            # Names are only used to redact the transcript; they are not sent.
+            self._caller_names(),
         )
         if narrative:
             card.title = "Draft call note (AI draft, check before saving)"
