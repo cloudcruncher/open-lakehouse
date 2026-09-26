@@ -7,8 +7,33 @@ bronze readable by platform admins with raw payloads NULL (which also closed qua
 to them), `SHOW TABLES` working, and sign-in via `127.0.0.1` redirected. Then the AI layer
 (PRs #8 to #11): a labelling guide that brought Claude's precision to 1.00 and is prompt-cached,
 the after-call note drafted by Claude from the transcript, a daily spend cap, AI usage and
-cost on the Live Call Assist dashboard with two alerts, and "Ask the assistant".
-`make verify`: 56/56.
+cost on the Live Call Assist dashboard with two alerts, and "Ask the assistant" (pilot).
+Then fixes: Superset asks to authorize again after a 30-minute idle (PR #12), and the audit
+chain stays linear when tool calls land together (PR #13; the local audit log was reset
+because the old bug had forked it). `make verify`: 56/56. API spend that day: about $0.40.
+
+## Resume here: the AI data engineer routine, step 4
+Work is paused mid-routine: an AI data engineer's day on this stack, **one small step per
+turn, the repo owner checks each step before the next**. Done: 1 platform health (Grafana,
+Dagster), 2 querying as each colleague (and why carol is refused silver), 3 a SQL
+workbench (Superset) and bronze for platform admins. Next is **step 4, a change request**:
+core banking adds a column and it is carried end to end, one step per turn:
+
+1. The source change: add a column to `core.customers`, for example `secondary_phone`
+   (personal data, so it exercises the governance path). Source DDL:
+   `infra/postgres/init/02-corebank-schema.sql` plus `infra/postgres/reconcile.sql` for the
+   running database; data: `services/platform/src/lakehouse_platform/seed/corebank.py`.
+2. Watch it arrive: Debezium carries the new field into `bronze.cdc_events` (as ops_admin;
+   the payload stays NULL, so check the batch `bronze.customers` or the stream's logs).
+3. The contract: add the column with a `pii.contact` tag to `contracts/*.odcs.yaml`, and
+   see `make contracts` fail until OPA agrees.
+4. The policy: tag it in `infra/opa/data/entitlements.json` (`column_tags`), add an OPA test.
+5. Silver and gold: map it in the silver pipeline (`jobs/spark/`), Iceberg schema evolution,
+   and into gold only if a data product needs it.
+6. Prove it as each colleague (Superset or `make sql`): alice sees it masked, bob in full,
+   carol not at all; then a `verify` check, docs, and a PR.
+
+Before starting: confirm item 1 below (the 02:00 UTC `nightly_refresh` run) in Dagster.
 
 Ordered by value. Each item says where to start and how to know it is done.
 
