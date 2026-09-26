@@ -1,0 +1,37 @@
+# Working in open-lakehouse
+
+A governed lakehouse for a bank, runnable on a laptop: Postgres core banking → Debezium → Kafka →
+Spark Structured Streaming → Iceberg (Polaris REST catalog, RustFS) → Trino + OPA → MCP gateway →
+Live Call Assist. Open work is in [docs/next-steps.md](docs/next-steps.md); read it first.
+
+## Commands
+- `make demo`: start everything, seed, run pipelines, then `make verify`. Safe to re-run.
+- `make verify`: 54 end-to-end checks. Run after any change that touches the running stack.
+- `make test` (OPA + Python unit tests), `make lint`, `make evals`, `make contracts`.
+- `make sql U=alice Q="..."` and `make agent U=alice T=get_customer_360 A='{...}'` run as a colleague.
+- `make urls` lists every portal. Personas: alice (contact centre), bob (complaints),
+  carol (analyst), ops_admin (platform admin). Access rules: `infra/opa/data/entitlements.json`.
+
+## Conventions
+- Python via uv only. Work on a branch, open a PR; CI (`ci`, `e2e`) must be green before merging.
+- Grafana dashboards are generated: edit `infra/grafana/build_dashboards.py`, run `make dashboards`,
+  commit the JSON. `make lint` fails if committed JSON differs from the builder output, so it
+  reports a failure until regenerated dashboards are committed.
+- Orchestration code is baked into the `open-lakehouse/spark:dev` image. After editing
+  `jobs/spark/orchestration/`, run `docker compose --profile ops build dagster-code` and
+  `docker compose --profile ops up -d dagster-code`.
+- Data contracts (`contracts/*.odcs.yaml`) and OPA column tags must agree; `make contracts` checks it.
+
+## Gotchas
+- Never read or print `.env` (generated secrets, Anthropic key). The demo password is in it;
+  ask the user to type it into Keycloak when a browser sign-in is needed.
+- The CDC stream owns silver through a writer lease (a Polaris namespace property). Batch silver
+  refuses to run while the lease is live; scheduled runs skip it instead.
+- Gold waits for the stream to drain (`writer.drained-at`) before reading silver.
+- PySpark streaming offsets arrive as dicts, not JSON strings.
+- MinIO images are gone from Docker Hub, hence RustFS. Polaris needs `kmsUnavailable` on RustFS.
+- OPA: `x in {ruleRef, "lit"}` misbehaves; use literal sets.
+- `docker kill` bypasses restart policies; `make heal` reconciles.
+- Counter series only exist once incremented: PromQL over error counters needs `or vector(0)`.
+- GitHub: poll `gh` sparingly (secondary rate limit). The e2e workflow cancels superseded runs,
+  so "cancelled" on an older commit is normal.
