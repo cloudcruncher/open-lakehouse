@@ -20,7 +20,7 @@ lakehouse produced it: the Iceberg snapshot the answer was pinned to (and the jo
 committed it), the Trino query run as the colleague, OPA's row filter and masks for that
 colleague, and the audit row. See [Platform x-ray](docs/live-call-assist.md#platform-x-ray-how-the-lakehouse-answered).
 
-Everything below is checked by `make verify` (54 end-to-end assertions) and `make chaos`
+Everything below is checked by `make verify` (55 end-to-end assertions) and `make chaos`
 (11 components killed in turn), locally and on every push in CI. None of it is aspirational.
 
 ```mermaid
@@ -47,13 +47,14 @@ flowchart LR
   CA -->|guidance cards| UI[Colleague console<br/>SSO + PKCE]
   DAG[Dagster<br/>assets · checks · freshness] -.-> Lakehouse
   OL[Marquez<br/>OpenLineage] -.-> Lakehouse
+  SQ[Superset SQL Lab<br/>SSO] -->|colleague's own token| TR
   PROM[Prometheus + Grafana<br/>SLOs · burn-rate alerts] -.-> MCP
 ```
 
 ## Quickstart
 
 ```bash
-make demo        # secrets → platform (all profiles) → synthetic bank → batch + streaming → 54 checks
+make demo        # secrets → platform (all profiles) → synthetic bank → batch + streaming → 55 checks
 make call        # a live call, headless: caller → transcript → agent → governed data → guidance
 make live-demo   # all five demo calls (watch them at http://localhost:8090, sign in as alice)
 make chaos       # kill -9 every component; watch it fail safe and heal itself
@@ -91,20 +92,25 @@ Needs Docker (~12 GB RAM for everything; `make up PROFILES=` runs the ~6 GB core
 
 ### 2. Governance that follows the human, including through an agent
 
-| Colleague | Persona | Brands | PII | Vulnerability flag | Silver |
-|---|---|---|---|---|---|
-| alice | contact centre | Meridian | partial (`*******3995`, DoB year) | ✅ | ✅ |
-| bob | complaints investigator | Meridian, Northgate | full | ✅ | ✅ |
-| carol | analyst | all | none | ❌ nulled (and not filterable) | ❌ |
+| Colleague | Persona | Brands | PII | Vulnerability flag | Silver | Bronze |
+|---|---|---|---|---|---|---|
+| alice | contact centre | Meridian | partial (`*******3995`, DoB year) | ✅ | ✅ | ❌ |
+| bob | complaints investigator | Meridian, Northgate | full | ✅ | ✅ | ❌ |
+| carol | analyst | all | none | ❌ nulled (and not filterable) | ❌ | ❌ |
+| ops_admin | platform admin | all | none | ❌ nulled | ✅ | ✅ event metadata; raw payloads NULL |
 
 - **Two independent layers:** Polaris decides which *engine* touches which namespace, and
   vends short-lived, table-scoped storage credentials (no keys in engines). OPA decides
-  which *person* sees which rows and columns. Bronze is unreachable from SQL, even for admins.
+  which *person* sees which rows and columns. Bronze is for platform admins only, to debug
+  ingestion, and whole-record payloads stay NULL even for them ([ADR 10](docs/adr/0010-platform-admins-read-bronze-without-payloads.md)).
 - **On-behalf-of agents (RFC 8693)**, purpose-bound calls, and a hash-chained,
   append-only audit log. Even the database superuser can't rewrite it.
 - **Contracts as code (ODCS v3.2):** CI fails if a PII column's contract classification
   and its OPA mask disagree; `verify` fails if the live tables drift from the contract.
-- **SSO everywhere:** console (PKCE), Grafana (OIDC), Dagster and lineage (oauth2-proxy).
+- **A SQL workbench that stays governed:** Superset SQL Lab sends each colleague's own
+  Keycloak token to Trino, so alice, bob and carol get exactly what `make sql` gives them.
+  No shared service account, no impersonation ([ADR 11](docs/adr/0011-sql-workbench-queries-as-the-colleague.md)).
+- **SSO everywhere:** console (PKCE), Grafana and Superset (OIDC), Dagster and lineage (oauth2-proxy).
   Machines get their own least-privilege identities: the metrics scraper can read Trino
   metrics and nothing else.
 
@@ -173,9 +179,12 @@ sizing, and SLOs.
 | Grafana | http://localhost:3001 | Bank SSO (ops_admin = admin) |
 | Dagster | http://localhost:3002 | SSO, platform admins only |
 | Lineage (Marquez) | http://localhost:3003 | SSO, any colleague |
+| SQL workbench (Superset) | http://localhost:3004 | SSO, any colleague; queries run as you |
 | Prometheus | http://localhost:9090 | local only |
 
 Demo password: `grep DEMO_USER_PASSWORD .env` (generated per machine, never committed).
+Use `localhost`, not `127.0.0.1`: Keycloak only accepts the registered address (the console
+and Superset redirect you).
 
 ## Repository layout
 
@@ -186,7 +195,7 @@ Demo password: `grep DEMO_USER_PASSWORD .env` (generated per machine, never comm
 | `jobs/spark/` | Bronze, silver (WAP), gold, CDC stream, maintenance; Dagster definitions (`orchestration/`) |
 | `services/orchestrator/` | Dagster control plane (webserver, daemon) |
 | `contracts/` | ODCS v3.2 data contracts + checker (schema, policy tags, live drift) |
-| `infra/` | OPA policies + tests, Keycloak realm, Trino, Postgres, Prometheus rules, Grafana dashboards-as-code, Marquez |
+| `infra/` | OPA policies + tests, Keycloak realm, Trino, Postgres, Prometheus rules, Grafana dashboards-as-code, Marquez, Superset |
 | `scripts/` | `verify`, `chaos`, `healer`, freshness probe, headless call client, SQL and agent clients |
 | `site/` | Interactive architecture site (GitHub Pages) |
 | `docs/` | [Live Call Assist](docs/live-call-assist.md) · [Resilience](docs/resilience.md) · [Scale](docs/scale.md) · [Runbooks](docs/runbooks.md) · [ADRs](docs/adr/) |

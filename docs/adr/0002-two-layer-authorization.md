@@ -1,6 +1,6 @@
 # 2. Two authorization layers: engines at the catalog, people in the engine
 
-**Status:** accepted
+**Status:** accepted. Bronze access amended by [ADR 10](0010-platform-admins-read-bronze-without-payloads.md).
 
 ## Context
 Colleagues, BI tools and AI agents all read the same tables but need different rows and
