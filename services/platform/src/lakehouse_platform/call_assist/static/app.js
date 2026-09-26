@@ -165,6 +165,12 @@ function addCard(c) {
   const head = el("div", "head");
   head.append(el("span", "kind", c.kind), el("span", "kind", c.latency_ms != null ? "" : ""));
   card.append(head, el("h3", "", c.title), el("p", "", c.body));
+  if (c.ai) {
+    // Who wrote the call note: Claude (with cost) or the template, and why.
+    card.append(el("div", `llm ${c.ai.engine === "claude" ? "claude" : "fallback"}`, c.ai.engine === "claude"
+      ? `✦ ${c.ai.model} · ${c.ai.ms} ms · ${c.ai.input_tokens}→${c.ai.output_tokens} tok · ≈ $${c.ai.cost_usd.toFixed(4)}`
+      : `template note · AI draft not used: ${c.ai.fallback}`));
+  }
   const meta = el("div", "meta");
   if (c.latency_ms != null) meta.append(el("span", "lat", `⚡ ${c.latency_ms} ms`));
   if (c.procedure) meta.append(el("span", "", `📘 ${c.procedure.id}`));

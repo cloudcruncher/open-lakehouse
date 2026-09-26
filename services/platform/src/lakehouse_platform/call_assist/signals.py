@@ -33,6 +33,8 @@ from typing import Any
 from prometheus_client import Counter, Histogram
 from pydantic import BaseModel, Field
 
+from .budget import BUDGET, SpendBudget
+
 log = logging.getLogger(__name__)
 
 LLM_CALLS = Counter(
@@ -208,9 +210,16 @@ class ClaudeExtractor:
     # with the tool schema) for Haiku's prompt cache: repeat calls read it at 0.1x the price.
     SYSTEM = (Path(__file__).parent / "label_guide.md").read_text()
 
-    def __init__(self, model: str | None = None, timeout_s: float = 2.5, client: Any = None) -> None:
+    def __init__(
+        self,
+        model: str | None = None,
+        timeout_s: float = 2.5,
+        client: Any = None,
+        budget: SpendBudget | None = None,
+    ) -> None:
         import anthropic  # optional at runtime: only needed when a key is configured
 
+        self.budget = budget or BUDGET
         # No retries: a live call can't wait; the rules result is already in hand.
         self.client = client or anthropic.Anthropic(timeout=timeout_s, max_retries=0)
         self.model = model or os.environ.get("CALL_ASSIST_MODEL", "claude-haiku-4-5")
@@ -233,6 +242,8 @@ class ClaudeExtractor:
             return base, {"engine": "rules", "note": "colleague lines use rules only"}
         started = time.monotonic()
         info: dict[str, Any] = {"model": self.model}
+        if not self.budget.allow():
+            return self._fallback(base, info, started, "budget", self.budget.reason())
         try:
             msg = self.client.messages.create(
                 model=self.model,
@@ -285,6 +296,7 @@ class ClaudeExtractor:
             output_tokens=msg.usage.output_tokens,
             cache_read_tokens=getattr(msg.usage, "cache_read_input_tokens", None) or 0,
             cache_write_tokens=getattr(msg.usage, "cache_creation_input_tokens", None) or 0,
+            cost_usd=round(self.budget.record(msg.model, msg.usage), 6),
             added={k: v for k, v in added.items() if v},
         )
         if not (info["cache_read_tokens"] or info["cache_write_tokens"]):

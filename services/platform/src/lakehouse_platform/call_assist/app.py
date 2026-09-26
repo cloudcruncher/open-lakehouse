@@ -50,9 +50,11 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from ..mcp_server.identity import IdentityConfig, KeycloakTokenVerifier
+from .budget import BUDGET
 from .engine import CallSession, Utterance
 from .knowledge import ProcedureIndex
 from .signals import default_extractor
+from .summary import default_summarizer
 from .tools import MCPTools
 
 log = logging.getLogger("call-assist")
@@ -78,6 +80,7 @@ verifier = KeycloakTokenVerifier(
     )
 )
 extractor = default_extractor()
+summarizer = default_summarizer()
 index = ProcedureIndex.default()
 
 
@@ -108,7 +111,7 @@ def get_or_create(call_id: str, colleague: str) -> Live:
         async def emit(event: dict[str, Any], _id: str = call_id) -> None:
             await publish(_id, event)
 
-        session = CallSession(call_id, colleague, emit, extractor, index)
+        session = CallSession(call_id, colleague, emit, extractor, index, summarizer=summarizer)
         live = Live(call_id, colleague, session)
         live.worker = asyncio.create_task(run(live))
         calls[call_id] = live
@@ -319,6 +322,8 @@ async def config(_: Request) -> JSONResponse:
             "client_id": os.environ.get("CONSOLE_CLIENT_ID", "agent-console"),
             "extractor": getattr(extractor, "name", "rules"),
             "model": getattr(extractor, "model", None),
+            "summary_model": getattr(summarizer, "model", None),
+            "ai_budget_usd": {"cap": BUDGET.daily_usd, "spent_today": round(BUDGET.spent, 4)},
         }
     )
 

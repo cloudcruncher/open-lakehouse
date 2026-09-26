@@ -75,6 +75,8 @@ class Card:
     latency_ms: int | None = None
     # How the platform produced the data behind this card, per tool (see mcp_server/provenance.py).
     xray: list[dict[str, Any]] = field(default_factory=list)
+    # Which engine wrote an AI-draftable card (the call note): model trace or fallback reason.
+    ai: dict[str, Any] | None = None
     id: str = field(default_factory=lambda: uuid.uuid4().hex[:10])
 
     @property
@@ -117,6 +119,7 @@ class CallSession:
         tools: ToolBackend | None = None,
         today: Callable[[], date] = lambda: datetime.now(UTC).date(),
         fresh_retry_delay_s: float = 4.0,
+        summarizer: Any = None,
     ) -> None:
         self.call_id = call_id
         self.colleague = colleague
@@ -126,6 +129,7 @@ class CallSession:
         self.tools = tools
         self.today = today
         self.fresh_retry_delay_s = fresh_retry_delay_s
+        self.summarizer = summarizer
         self.signals = Signals()
         self.transcript: list[Utterance] = []
         self.cards: list[Card] = []
@@ -188,7 +192,7 @@ class CallSession:
     async def end(self) -> Card:
         async with self._lock:
             self.ended = True
-            card = self._wrap_up()
+            card = await self._wrap_up()
             await self._show(card, None, time.monotonic())
             await self.emit({"type": "ended"})
             return card
@@ -671,8 +675,19 @@ class CallSession:
         LATENCY.labels(card.kind).observe(card.latency_ms / 1000)
         await self.emit({"type": "card", "card": asdict(card) | {"priority": card.priority}})
 
-    def _wrap_up(self) -> Card:
-        """After-call note: drafted for the colleague to check and save, not saved automatically."""
+    def _caller_names(self) -> list[str]:
+        names = [self.signals.full_name, self.signals.last_name]
+        names += (self.signals.full_name or "").split()
+        if self.customer:
+            names += [self.customer.get("first_name"), self.customer.get("last_name")]
+        return [n for n in names if n]
+
+    async def _wrap_up(self) -> Card:
+        """After-call note: drafted for the colleague to check and save, not saved automatically.
+
+        With a summarizer, Claude writes the narrative from what was said; code still writes
+        who the caller is, ID&V and the audit line. Otherwise (or on any failure) a template.
+        """
         name = ""
         if self.customer:
             name = f"{self.customer.get('first_name', '')} {self.customer.get('last_name', '')} ({self.customer['customer_id']})"
@@ -687,12 +702,28 @@ class CallSession:
             lines.append(f"Vulnerability disclosed: {vulns} (record only with consent).")
         if actions:
             lines.append("Guidance given: " + "; ".join(dict.fromkeys(actions)) + ".")
-        lines.append(
-            f"Data lookups: {sum(1 for t in self.tool_log if t.get('outcome') == 'ok')}, all audited under {self.call_id}."
+        audit = f"Data lookups: {sum(1 for t in self.tool_log if t.get('outcome') == 'ok')}, all audited under {self.call_id}."
+        lines.append(audit)
+        evidence = [{"customer_id": (self.customer or {}).get("customer_id"), "call": self.call_id}]
+        card = Card("summary", "Draft call note (check before saving)", " ".join(lines), evidence=evidence)
+        if self.summarizer is None:
+            return card
+        narrative, card.ai = await asyncio.to_thread(
+            self.summarizer.draft,
+            [(t.speaker, t.text) for t in self.transcript],
+            # Titles only, and not the identity card: the model never sees lakehouse data.
+            list(dict.fromkeys(c.title for c in self.cards if c.kind not in ("identity", "summary"))),
+            {
+                "intents": [str(i) for i in self.signals.intents],
+                "vulnerabilities": [str(v) for v in self.signals.vulnerabilities],
+                "risks": [str(r) for r in self.signals.risks],
+            },
+            self.verified,
+            evidence,
+            # Names are only used to redact the transcript; they are not sent.
+            self._caller_names(),
         )
-        return Card(
-            "summary",
-            "Draft call note (check before saving)",
-            " ".join(lines),
-            evidence=[{"customer_id": (self.customer or {}).get("customer_id"), "call": self.call_id}],
-        )
+        if narrative:
+            card.title = "Draft call note (AI draft, check before saving)"
+            card.body = "\n".join([lines[0], narrative, audit])
+        return card

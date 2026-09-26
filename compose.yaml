@@ -523,7 +523,8 @@ services:
       call-sim: { condition: service_healthy }
     entrypoint: ["call-assist"]
     environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}   # optional: LLM understanding; rules-only without it
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}   # optional: LLM understanding + call note; rules-only without it
+      CALL_ASSIST_DAILY_BUDGET_USD: ${CALL_ASSIST_DAILY_BUDGET_USD:-0.25}   # model spend cap per day (ADR 12)
     ports: ["127.0.0.1:8090:8090"]
     read_only: true
     tmpfs: [/tmp]

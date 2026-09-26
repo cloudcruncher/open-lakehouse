@@ -43,9 +43,6 @@ SINGULAR = {"intents": "intent", "vulnerabilities": "vulnerability", "risks": "r
 RECALL_FLOOR = {"intents": 0.80, "vulnerabilities": 0.75, "risks": 1.0}
 # A false label is not harmless: a false intent fetches data and shows a card nobody asked for.
 PRECISION_FLOOR = {"intents": 0.90, "vulnerabilities": 0.90, "risks": 0.90}
-# USD per million tokens (list price) for the cost estimate: input, output. Cache reads
-# are billed at 0.1x input and 5-minute cache writes at 1.25x.
-PRICES = {"claude-haiku-4-5": (1.0, 5.0)}
 
 
 class FixtureTools:
@@ -130,24 +127,8 @@ def model_usage(traces: list[dict[str, Any]]) -> dict[str, Any] | None:
         "output_tokens": sum(t["output_tokens"] for t in ok),
         "cache_read_tokens": sum(t.get("cache_read_tokens", 0) for t in ok),
         "cache_write_tokens": sum(t.get("cache_write_tokens", 0) for t in ok),
-        "cost_usd": cost_usd(ok),
+        "cost_usd": round(sum(t["cost_usd"] for t in ok), 4),
     }
-
-
-def cost_usd(traces: list[dict[str, Any]]) -> float | None:
-    model = next((t["model"] for t in traces), "")
-    price = next((p for name, p in PRICES.items() if model.startswith(name)), None)
-    if price is None:
-        return None
-    per_in, per_out = price[0] / 1e6, price[1] / 1e6
-    total = sum(
-        t["input_tokens"] * per_in
-        + t.get("cache_read_tokens", 0) * per_in * 0.1
-        + t.get("cache_write_tokens", 0) * per_in * 1.25
-        + t["output_tokens"] * per_out
-        for t in traces
-    )
-    return round(total, 4)
 
 
 # -------------------------------------------------------------------- calls
@@ -241,7 +222,7 @@ def main() -> int:
             f"p50 {m['p50_ms']} ms, p95 {m['p95_ms']} ms, "
             f"tokens {m['input_tokens']} in / {m['output_tokens']} out"
         )
-        cost = f"≈ ${m['cost_usd']:.4f} at list price" if m["cost_usd"] is not None else "cost unknown"
+        cost = f"≈ ${m['cost_usd']:.4f} at list price"
         print(f"  prompt cache: {m['cache_read_tokens']} read, {m['cache_write_tokens']} written · {cost}")
         if m["fallbacks"]:
             print(f"  fell back to rules: {', '.join(m['fallbacks'])}")

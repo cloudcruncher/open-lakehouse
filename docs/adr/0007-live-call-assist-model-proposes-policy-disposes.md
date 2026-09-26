@@ -1,6 +1,6 @@
 # 7. Live Call Assist: the model proposes, fixed policy disposes
 
-**Status:** accepted
+**Status:** accepted. The after-call note and a spend cap added by [ADR 12](0012-ai-call-note-and-a-spend-cap.md).
 
 ## Context
 An assistant listening to a live call could, in the naive design, let an LLM decide
