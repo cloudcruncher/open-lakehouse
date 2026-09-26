@@ -9,6 +9,12 @@ Every micro-batch (default 10 s):
              contract as batch silver, quarantine violations with reasons, and MERGE
              the rest: inserts, updates (newer wins) and deletes.
 
+Children can arrive before their parents: each entity is its own topic, and
+`maxOffsetsPerTrigger` splits a batch across topics, so an account can land a batch
+ahead of its customer. A change whose *only* violation is a missing parent is parked
+in `ops.cdc_pending` and retried with every later batch; it is quarantined only if
+the parent still hasn't arrived after CDC_ORPHAN_GRACE (default 15 min).
+
 Delivery guarantees:
   * Kafka offsets live in the Spark checkpoint and only advance after the batch
     function returns, so a crash replays the last batch (at-least-once input).
@@ -28,6 +34,7 @@ from __future__ import annotations
 import os
 import time
 from datetime import datetime, timezone
+from functools import reduce
 
 from prometheus_client import Counter, Gauge, Histogram, start_http_server
 from pyspark.sql import DataFrame, SparkSession, Window
@@ -53,6 +60,7 @@ TOPICS = r"corebank\.core\.(customers|accounts|transactions|complaints)"
 CHECKPOINT = os.environ.get("CDC_CHECKPOINT", "/checkpoints/corebank-cdc")
 TRIGGER = os.environ.get("CDC_TRIGGER", "10 seconds")
 MAX_OFFSETS = int(os.environ.get("CDC_MAX_OFFSETS_PER_TRIGGER", 100_000))
+ORPHAN_GRACE = os.environ.get("CDC_ORPHAN_GRACE", "15 minutes")
 ORDER = ["customers", "accounts", "transactions", "complaints"]
 
 # Debezium payload fields -> Spark types, per entity. The JSON is the source's
@@ -92,6 +100,9 @@ PROGRESS = Gauge(
 QUARANTINE_RATE = Gauge(
     "cdc_quarantine_rate", "Share of the last batch quarantined", ["entity"]
 )
+PENDING = Gauge(
+    "cdc_pending_orphans", "Changes parked waiting for their parent to arrive", ["entity"]
+)
 
 
 def ensure_bronze_changelog(spark: SparkSession) -> None:
@@ -102,6 +113,17 @@ def ensure_bronze_changelog(spark: SparkSession) -> None:
             ingested_at TIMESTAMP, batch_id BIGINT
         ) USING iceberg PARTITIONED BY (entity, days(ingested_at))
         TBLPROPERTIES ('format-version'='2', 'write.parquet.compression-codec'='zstd')
+    """)
+
+
+def ensure_pending(spark: SparkSession) -> None:
+    spark.sql("""
+        CREATE TABLE IF NOT EXISTS ops.cdc_pending (
+            entity STRING, op STRING, record_key STRING, payload STRING, source_lsn BIGINT,
+            source_ts TIMESTAMP, kafka_topic STRING, kafka_partition INT, kafka_offset BIGINT,
+            first_seen_at TIMESTAMP
+        ) USING iceberg
+        TBLPROPERTIES ('format-version'='2')
     """)
 
 
@@ -138,8 +160,9 @@ def to_silver_shape(spark: SparkSession, entity: str, changes: DataFrame) -> Dat
         "op",
         "source_lsn",
         "kafka_offset",
+        "first_seen_at",
         F.from_json("payload", SOURCE_SCHEMA[entity]).alias("r"),
-    ).select("op", "source_lsn", "kafka_offset", "r.*")
+    ).select("op", "source_lsn", "kafka_offset", "first_seen_at", "r.*")
     for c, t in rows.dtypes:
         if c.endswith("_at") or c == "txn_ts":
             rows = rows.withColumn(c, F.col(c).cast("timestamp"))
@@ -154,7 +177,8 @@ def to_silver_shape(spark: SparkSession, entity: str, changes: DataFrame) -> Dat
 
 def upsert_entity(
     spark: SparkSession, entity, changes: DataFrame, batch_key: str
-) -> tuple[int, int]:
+) -> tuple[int, int, DataFrame]:
+    """MERGE one entity's changes. Returns (merged, quarantined, keys parked as orphans)."""
     pk = entity.pk
     rows = to_silver_shape(spark, entity.name, changes)
     # The latest change per key wins: source LSN order is commit order.
@@ -173,10 +197,22 @@ def upsert_entity(
         upserts = upserts.drop(
             "customer_id"
         )  # resolved through the account, as in batch
-    checked = apply_contract(entity, with_brand(spark, entity, upserts)).cache()
+    checked = apply_contract(entity, with_brand(spark, entity, upserts))
+    # Missing parent and nothing else wrong, within the grace period: wait, don't judge.
+    only_orphan = (F.size("_violations") > 0) & (
+        F.size(F.filter("_violations", lambda r: ~r.startswith("orphan_"))) == 0
+    )
+    waiting = only_orphan & (
+        F.col("first_seen_at") > F.current_timestamp() - F.expr(f"INTERVAL {ORPHAN_GRACE}")
+    )
+    checked = checked.withColumn("_waiting", waiting).cache()
     total = checked.count()
-    bad = checked.where(F.size("_violations") > 0)
+    bad = checked.where((F.size("_violations") > 0) & ~F.col("_waiting"))
     n_bad = bad.count() if total else 0
+    parked = checked.where("_waiting").select(
+        F.lit(entity.name).alias("entity"), F.col(pk).cast("string").alias("record_key")
+    )
+    n_parked = parked.count() if total else 0
 
     if n_bad:
         (
@@ -195,6 +231,7 @@ def upsert_entity(
         )
     QUARANTINED.labels(entity.name).inc(n_bad)
     QUARANTINE_RATE.labels(entity.name).set(n_bad / total if total else 0.0)
+    PENDING.labels(entity.name).set(n_parked)
 
     now = F.current_timestamp()
     good = checked.where(F.size("_violations") == 0).select(
@@ -238,8 +275,10 @@ def upsert_entity(
                 f"[cdc] {target}: commit conflict, retry {attempt}: {msg.splitlines()[0][:160]}"
             )
             time.sleep(attempt * 2)
+    # `parked` is recomputed from `checked` by the caller, so keep it materialised.
+    parked = parked.localCheckpoint()
     checked.unpersist()
-    return total - n_bad, n_bad
+    return total - n_bad - n_parked, n_bad, parked
 
 
 def make_batch_fn(spark: SparkSession):
@@ -247,7 +286,13 @@ def make_batch_fn(spark: SparkSession):
 
     def process(raw: DataFrame, batch_id: int) -> None:
         started = time.monotonic()
-        changes = parse(raw).cache()
+        record_key = F.coalesce(
+            *[
+                F.when(F.col("entity") == e.name, F.get_json_object("payload", f"$.{e.pk}"))
+                for e in ents.values()
+            ]
+        )
+        changes = parse(raw).withColumn("record_key", record_key).cache()
         if changes.isEmpty():
             LAST_BATCH.set(time.time())
             changes.unpersist()
@@ -256,17 +301,11 @@ def make_batch_fn(spark: SparkSession):
         oldest = changes.agg(F.min("source_ts")).collect()[0][0]
 
         if not already_committed(spark, key):
-            record_key = F.coalesce(
-                *[
-                    F.when(F.col("entity") == e.name, F.get_json_object("payload", f"$.{e.pk}"))
-                    for e in ents.values()
-                ]
-            )
             (
                 changes.select(
                     "entity",
                     "op",
-                    record_key.alias("record_key"),
+                    "record_key",
                     "payload",
                     "source_lsn",
                     "source_ts",
@@ -281,19 +320,37 @@ def make_batch_fn(spark: SparkSession):
                 .append()
             )
 
-        present = set()
         for r in changes.groupBy("entity", "op").count().collect():
             EVENTS.labels(r["entity"], r["op"]).inc(r["count"])
-            present.add(r["entity"])
-        summary = []
+        # Retry parked orphans alongside the new changes; the latest change per key wins.
+        pending = spark.table("ops.cdc_pending")
+        work = (
+            changes.withColumn("first_seen_at", F.current_timestamp())
+            .unionByName(pending)
+            .localCheckpoint()
+        )
+        present = {r["entity"] for r in work.select("entity").distinct().collect()}
+        summary, parked = [], []
         for name in ORDER:
             if name in present:
-                good, bad = upsert_entity(
-                    spark, ents[name], changes.where(F.col("entity") == name), key
+                good, bad, waiting = upsert_entity(
+                    spark, ents[name], work.where(F.col("entity") == name), key
                 )
+                parked.append(waiting)
+                n_wait = waiting.count()
                 summary.append(
-                    f"{name}={good}" + (f" (+{bad} quarantined)" if bad else "")
+                    f"{name}={good}"
+                    + (f" (+{bad} quarantined)" if bad else "")
+                    + (f" (+{n_wait} awaiting parent)" if n_wait else "")
                 )
+        # Replace the parked set: everything still waiting, with its original first-seen time.
+        waiting_keys = reduce(DataFrame.unionByName, parked) if parked else None
+        still_waiting = (
+            work.join(F.broadcast(waiting_keys), ["entity", "record_key"], "left_semi")
+            if waiting_keys is not None
+            else work.limit(0)
+        )
+        still_waiting.select(*pending.columns).writeTo("ops.cdc_pending").overwrite(F.lit(True))
         changes.unpersist()
 
         now = datetime.now(timezone.utc)
@@ -318,6 +375,7 @@ def main() -> None:
     ensure_ops_tables(spark)
     ensure_quarantine(spark)
     ensure_bronze_changelog(spark)
+    ensure_pending(spark)
     renew_silver_lease(spark, STREAM_ID)
 
     raw = (

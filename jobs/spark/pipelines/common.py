@@ -100,6 +100,10 @@ def spark_session(app: str) -> SparkSession:
         .config(f"{c}.header.X-Iceberg-Access-Delegation", "vended-credentials")
         .config(f"{c}.io-impl", "org.apache.iceberg.aws.s3.S3FileIO")
         .config(f"{c}.s3.path-style-access", "true")
+        # Read your own writes. Each foreachBatch runs in a session clone with its own
+        # catalog, so a cached table (30 s by default) hides the clone's commits from the
+        # parent session: the stream would see accounts' new customers as missing.
+        .config(f"{c}.cache-enabled", "false")
         .config("spark.sql.defaultCatalog", CATALOG)
         .config("spark.sql.session.timeZone", "UTC")
         .config(
