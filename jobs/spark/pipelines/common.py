@@ -292,7 +292,8 @@ def wait_for_stream_drain(spark: SparkSession, timeout_s: int = 900) -> None:
         if at.isdigit() and int(at) >= since:
             print(f"[drain] '{holder}' caught up at {int(at)}; silver is complete", flush=True)
             return
-        print(f"[drain] waiting for '{holder}' to catch up before reading silver", flush=True)
+        print(f"[drain] waiting for '{holder}' to catch up (drained-at={at or 'never'}, need >= {int(since)})",
+              flush=True)
         time.sleep(10)
     raise RuntimeError(
         f"stream '{holder}' did not catch up within {timeout_s}s; refusing to build on a partial silver"
