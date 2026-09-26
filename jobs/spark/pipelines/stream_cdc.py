@@ -61,6 +61,7 @@ BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "kafka:9092")
 TOPICS = r"corebank\.core\.(customers|accounts|transactions|complaints)"
 CHECKPOINT = os.environ.get("CDC_CHECKPOINT", "/checkpoints/corebank-cdc")
 TRIGGER = os.environ.get("CDC_TRIGGER", "10 seconds")
+TRIGGER_SECONDS = int(TRIGGER.split()[0]) * (60 if "minute" in TRIGGER else 1)
 MAX_OFFSETS = int(os.environ.get("CDC_MAX_OFFSETS_PER_TRIGGER", 100_000))
 ORPHAN_GRACE = os.environ.get("CDC_ORPHAN_GRACE", "15 minutes")
 ORDER = ["customers", "accounts", "transactions", "complaints"]
@@ -374,8 +375,8 @@ def make_batch_fn(spark: SparkSession):
 def drained(progress: dict) -> bool:
     """True if the trigger read everything Kafka had (not cut short by maxOffsetsPerTrigger)."""
     for src in progress.get("sources", []):
-        latest = src.get("latestOffset")
-        if not latest or json.loads(src["endOffset"]) != json.loads(latest):
+        latest, end = src.get("latestOffset"), src.get("endOffset")
+        if not latest or not end or json.loads(end) != json.loads(latest):
             return False
     return bool(progress.get("sources"))
 
@@ -428,6 +429,15 @@ def main() -> None:
                 # everything in Kafka at its start is now in silver.
                 mark_stream_drained(spark, ts.timestamp())
                 last_drain = ts.timestamp()
+        # An idle stream posts no new progress (Spark 3.5+), so the check above goes
+        # quiet exactly when the stream is caught up. The status still says so: the last
+        # trigger (at most one interval ago) found nothing new to read.
+        status = query.status
+        if progress and status["message"] == "Waiting for data to arrive" and not status["isTriggerActive"]:
+            idle_since = time.time() - TRIGGER_SECONDS
+            if idle_since - last_drain >= 15:
+                mark_stream_drained(spark, idle_since)
+                last_drain = idle_since
         query.awaitTermination(5)
     if query.exception():
         raise RuntimeError(f"stream stopped: {query.exception()}")
