@@ -46,6 +46,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 .chip.warn { border-color: var(--warn); color: var(--warn); }
 .sig .risk { color: var(--bad); border-color: var(--bad); }
 @keyframes pop { from { transform: translateY(6px); opacity: 0; } }
+.ask { display: flex; gap: 8px; margin-bottom: 10px; }
+.ask input { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 7px 10px; font: inherit; font-size: 12.5px; }
 .verifybar { display: flex; gap: 10px; align-items: center; justify-content: space-between; background: #3a2a07; border: 1px solid var(--warn); color: #ffd98a; padding: 8px 10px; border-radius: 10px; margin-bottom: 10px; font-size: 12.5px; }
 .status { background: var(--panel2); border: 1px dashed var(--line); padding: 7px 10px; border-radius: 8px; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
 .cards { display: flex; flex-direction: column; gap: 10px; }

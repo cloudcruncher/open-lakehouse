@@ -102,7 +102,16 @@ draft passes the grounding check or the template note is used, and the card says
 Measured: about 0.4k tokens in, 0.1k out, under $0.001 and ~1.8 s per call.
 [ADR 12](adr/0012-ai-call-note-and-a-spend-cap.md).
 
-**Spend cap.** All model calls share a daily cap (`CALL_ASSIST_DAILY_BUDGET_USD`, default
+**Ask the assistant (pilot).** A box above the guidance takes typed questions. Claude
+(`CALL_ASSIST_ASK_MODEL`, Haiku 4.5) makes one call, forced to pick one tool: answer from
+the top 3 procedures (cited, grounded against them), name a fixed lookup (unrecognised
+payment, open complaint, sent payment status, balances) that the engine runs as the
+colleague for the identified caller, or say it can't answer. It never sees the lookup's
+result. Without a key, within the cap or on any failure, the best procedure's excerpt is
+shown (`procedure search · AI not used: <reason>`). Measured: ~1.5k tokens in, ~0.8–1.8 s,
+about $0.002 per question. [ADR 13](adr/0013-ask-the-assistant-the-model-routes.md).
+
+**Spend cap.** All model calls (lines, notes, questions) share a daily cap (`CALL_ASSIST_DAILY_BUDGET_USD`, default
 $0.25, reset at midnight UTC), estimated at list price from each response's token usage.
 When it is reached, lines are understood by rules and the note uses the template, with
 "daily AI budget reached" shown. `curl -s localhost:8090/config` shows today's spend;

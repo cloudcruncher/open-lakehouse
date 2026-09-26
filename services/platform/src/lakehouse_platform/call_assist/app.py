@@ -50,6 +50,7 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from ..mcp_server.identity import IdentityConfig, KeycloakTokenVerifier
+from .assistant import default_assistant
 from .budget import BUDGET
 from .engine import CallSession, Utterance
 from .knowledge import ProcedureIndex
@@ -81,6 +82,7 @@ verifier = KeycloakTokenVerifier(
 )
 extractor = default_extractor()
 summarizer = default_summarizer()
+assistant = default_assistant()
 index = ProcedureIndex.default()
 
 
@@ -111,7 +113,9 @@ def get_or_create(call_id: str, colleague: str) -> Live:
         async def emit(event: dict[str, Any], _id: str = call_id) -> None:
             await publish(_id, event)
 
-        session = CallSession(call_id, colleague, emit, extractor, index, summarizer=summarizer)
+        session = CallSession(
+            call_id, colleague, emit, extractor, index, summarizer=summarizer, assistant=assistant
+        )
         live = Live(call_id, colleague, session)
         live.worker = asyncio.create_task(run(live))
         calls[call_id] = live
@@ -307,6 +311,25 @@ async def verified(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True})
 
 
+async def ask(request: Request) -> JSONResponse:
+    who = await colleague(request)
+    if who is None:
+        return unauthorized()
+    live = calls.get(request.path_params["call_id"])
+    if live is None or live.colleague != who[0]:
+        return JSONResponse({"error": "no such call"}, status_code=404)
+    try:
+        question = str((await request.json()).get("question", "")).strip()
+    except ValueError:
+        question = ""
+    if not question or len(question) > 300:
+        return JSONResponse({"error": "ask a question of 1 to 300 characters"}, status_code=400)
+    attach(live, who[1])
+    # Answered in the background; the card arrives on the call's event stream.
+    asyncio.create_task(live.session.ask(question))
+    return JSONResponse({"ok": True}, status_code=202)
+
+
 async def scenarios(_: Request) -> JSONResponse:
     async with httpx.AsyncClient(timeout=3) as http:
         try:
@@ -323,6 +346,7 @@ async def config(_: Request) -> JSONResponse:
             "extractor": getattr(extractor, "name", "rules"),
             "model": getattr(extractor, "model", None),
             "summary_model": getattr(summarizer, "model", None),
+            "ask_model": getattr(assistant, "model", None),
             "ai_budget_usd": {"cap": BUDGET.daily_usd, "spent_today": round(BUDGET.spent, 4)},
         }
     )
@@ -400,6 +424,7 @@ app = SecurityHeaders(
             Route("/api/calls/{call_id}/events", events),
             Route("/api/calls/{call_id}/token", refresh_token, methods=["POST"]),
             Route("/api/calls/{call_id}/verified", verified, methods=["POST"]),
+            Route("/api/calls/{call_id}/ask", ask, methods=["POST"]),
             Mount("/static", StaticFiles(directory=STATIC), name="static"),
         ],
         lifespan=lifespan,

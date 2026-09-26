@@ -81,6 +81,7 @@ async function startCall(scenario) {
   const body = await r.json();
   if (!r.ok) { $("status").hidden = false; $("status").textContent = body.error || "could not start call"; return; }
   currentCall = body.call_id;
+  $("ask").querySelectorAll("input, button").forEach((x) => (x.disabled = false));
   $("callinfo").textContent = `${body.call_id} · ${body.title}`;
   $("live").hidden = false;
   streamEvents(body.call_id);
@@ -169,7 +170,7 @@ function addCard(c) {
     // Who wrote the call note: Claude (with cost) or the template, and why.
     card.append(el("div", `llm ${c.ai.engine === "claude" ? "claude" : "fallback"}`, c.ai.engine === "claude"
       ? `✦ ${c.ai.model} · ${c.ai.ms} ms · ${c.ai.input_tokens}→${c.ai.output_tokens} tok · ≈ $${c.ai.cost_usd.toFixed(4)}`
-      : `template note · AI draft not used: ${c.ai.fallback}`));
+      : `${c.ai.engine === "search" ? "procedure search" : "template note"} · AI not used: ${c.ai.fallback}`));
   }
   const meta = el("div", "meta");
   if (c.latency_ms != null) meta.append(el("span", "lat", `⚡ ${c.latency_ms} ms`));
@@ -261,6 +262,13 @@ async function boot() {
   $("login").onclick = login;
   $("signout").onclick = () => location.assign(`${oidc("logout")}?client_id=${cfg.client_id}&post_logout_redirect_uri=${encodeURIComponent(location.origin + "/")}`);
   $("verify").onclick = async () => { if (currentCall) await api(`/api/calls/${currentCall}/verified`, { method: "POST" }); };
+  $("ask").onsubmit = async (e) => {
+    e.preventDefault();
+    const q = $("question").value.trim();
+    if (!currentCall || !q) return;
+    $("question").value = "";
+    await api(`/api/calls/${currentCall}/ask`, { method: "POST", body: JSON.stringify({ question: q }) });
+  };
   if (!(await completeLogin())) { show("signin"); return; }
   const c = claims();
   $("user").textContent = `${c.preferred_username} · ${c.name ?? ""}`;

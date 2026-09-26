@@ -86,6 +86,10 @@ Needs Docker (~12 GB RAM for everything; `make up PROFILES=` runs the ~6 GB core
   never sees lakehouse records. Grounded like every card; a daily cap (default
   $0.25) falls back to rules and the template when reached
   ([ADR 12](docs/adr/0012-ai-call-note-and-a-spend-cap.md)).
+- **Ask the assistant (pilot).** Colleagues type questions during a call: Claude answers from the
+  procedures with citations, or picks a governed lookup (complaints, payments, balances)
+  that code runs as the colleague; the model never sees the data. Falls back to search
+  ([ADR 13](docs/adr/0013-ask-the-assistant-the-model-routes.md)).
 - **The assistant sees no more than the colleague.** It uses the colleague's own SSO token
   through the MCP gateway, so OPA masks apply; an analyst's assistant can't even
   identify a caller.
