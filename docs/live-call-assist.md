@@ -68,13 +68,32 @@ Where to see it working (the model is `claude-haiku-4-5` by default, `CALL_ASSIS
 | Place | Rules only | Claude answering | Claude failing |
 |---|---|---|---|
 | Console header chip | `understanding: rules only (no API key)` | `understanding: Claude (model) + rules` | same text, turns amber |
-| Under each caller line | nothing | `✦ model · 480 ms · 412→38 tok · added: card fraud` (or "agreed with rules") | `rules only · Claude not used: <reason>` |
-| Metrics (`:8090/metrics`) | none | `assist_llm_extractions_total{outcome="ok"}`, `assist_llm_extraction_seconds` | same counter, `outcome` = `auth`, `timeout`, `rate_limited`, `api_error`, `bad_output`... |
+| Under each caller line | nothing | `✦ model · 850 ms · 432 (+4372 cached)→38 tok · added: card fraud` (or "agreed with rules") | `rules only · Claude not used: <reason>` |
+| Metrics (`:8090/metrics`) | none | `assist_llm_extractions_total{outcome="ok"}`, `assist_llm_extraction_seconds`, `assist_llm_tokens_total{kind}` | same counter, `outcome` = `auth`, `timeout`, `rate_limited`, `api_error`, `bad_output`... |
 
 A failure never blocks the call (rules have already answered), but it is never silent
 either: the reason is the API's own message, e.g. "Your credit balance is too low". Only
 customer lines go to the model; colleague lines use rules. The model never sees customer
 data or calls tools: it labels the utterance, and the fixed planner decides what to fetch.
+
+**What the model is told, and what it costs.** The prompt is a labelling guide
+([`label_guide.md`](../services/platform/src/lakehouse_platform/call_assist/label_guide.md)):
+a definition of every label, what it is *not*, and about 100 worked examples, including
+near misses ("How do I change my PIN?" is not a sensitive-data request). Label names alone
+were ambiguous: before the guide, Claude tagged "What's my PIN?" as a balance query, and
+intent and risk precision fell to 0.78. The guide plus the tool schema (about 4.4k tokens)
+is marked for prompt caching, and it is kept above Haiku 4.5's 4,096-token cache minimum
+on purpose: below it, caching silently does nothing, which the service logs as a warning.
+Each line then sends about 430 new tokens and reads the rest from cache at 0.1x the price;
+the first line after 5 idle minutes writes the cache (1.25x). Measured on the eval set:
+input cost down about 40% against the uncached short prompt, p95 latency 1.2 s to 1.0 s.
+A label the model invents is dropped (and named in the trace) rather than discarding its
+whole answer.
+
+**Which model.** Haiku 4.5 is the default for this job: it runs on every caller line under
+a 2.5 s deadline, and on the eval set it scores 1.00 on every label. Choose a model by
+evidence: `CALL_ASSIST_MODEL=<model> uv run call-assist-evals --extractor claude` reports
+precision, recall, latency, cache use and cost for any model on the same gates.
 
 ## Platform x-ray: how the lakehouse answered
 
@@ -101,13 +120,18 @@ policy never gates the answer: Trino has already enforced it.
 
 - **Understanding:** 35 labelled utterances, including deliberately hard paraphrases.
   Rules extractor today: intents precision 1.00 / recall 0.93, vulnerabilities
-  1.00 / 0.78, risks 1.00 / 1.00, identity capture 100%. Floors: intents ≥ 0.80,
-  vulnerabilities ≥ 0.75, risks = 1.00 (a missed safety signal always fails).
+  1.00 / 0.78, risks 1.00 / 1.00, identity capture 100%. Recall floors: intents ≥ 0.80,
+  vulnerabilities ≥ 0.75, risks = 1.00 (a missed safety signal always fails). Precision
+  floor 0.90 for every group: a false intent fetches data nobody asked for. The label
+  guide's examples never repeat an eval line (a unit test checks), so the eval stays unseen.
 - **Calls:** 8 scripted calls against recorded tool responses. They check tool selection,
   expected cards, computed deadlines, zero ungrounded cards, forbidden content, and the
   denied, unavailable and no-match paths.
 - Set `ANTHROPIC_API_KEY` and run `uv run call-assist-evals --extractor claude` to compare
-  the LLM layer against the same gates.
+  the LLM layer against the same gates. It also reports how the model was used: answered
+  vs fell back (and why), p50/p95 latency, tokens, cache reads and writes, and cost. Claude
+  (Haiku 4.5) today: 1.00 precision and recall on every group, 35/35 answered, p95 ~1.0 s,
+  about $0.04 per run.
 
 ## Latency (local, measured)
 

@@ -10,9 +10,11 @@ Two suites, no platform needed (CI runs them on every change):
                  reach the colleague, and graceful failure handling.
 
 Gates (exit code 1 on breach): every call case passes, zero ungrounded cards,
-risk-signal recall = 100% (safety labels must never be missed), and overall intent
-and vulnerability recall at or above the floor. The floor ratchets up as the
-extractor improves; it never silently goes down.
+risk-signal recall = 100% (safety labels must never be missed), overall intent
+and vulnerability recall at or above the floor, and precision at or above its floor
+for every label group. The floors ratchet up as the extractor improves; they never
+silently go down. With --extractor claude the report also says how the model was used:
+answered vs fell back to rules (and why), latency, tokens, prompt-cache use and cost.
 
 Usage: call-assist-evals [--extractor rules|claude] [--json report.json]
 """
@@ -39,6 +41,11 @@ from ..tools import ToolFailure
 HERE = Path(__file__).parent
 SINGULAR = {"intents": "intent", "vulnerabilities": "vulnerability", "risks": "risk"}
 RECALL_FLOOR = {"intents": 0.80, "vulnerabilities": 0.75, "risks": 1.0}
+# A false label is not harmless: a false intent fetches data and shows a card nobody asked for.
+PRECISION_FLOOR = {"intents": 0.90, "vulnerabilities": 0.90, "risks": 0.90}
+# USD per million tokens (list price) for the cost estimate: input, output. Cache reads
+# are billed at 0.1x input and 5-minute cache writes at 1.25x.
+PRICES = {"claude-haiku-4-5": (1.0, 5.0)}
 
 
 class FixtureTools:
@@ -71,8 +78,10 @@ def eval_understanding(extractor: Any) -> dict[str, Any]:
     fn: dict[str, int] = defaultdict(int)
     misses: list[str] = []
     ident_ok = ident_total = 0
+    traces: list[dict[str, Any]] = []
     for item in items:
-        got = extractor.extract(item["text"], "customer")
+        got, trace = extractor.trace(item["text"], "customer")
+        traces.append(trace)
         for field in ("intents", "vulnerabilities", "risks"):
             want = set(item.get(field) or [])
             have = {str(x) for x in getattr(got, field)}
@@ -99,7 +108,46 @@ def eval_understanding(extractor: Any) -> dict[str, Any]:
         }
     report["identity_capture"] = round(ident_ok / max(1, ident_total), 3)
     report["misses"] = misses
+    report["model"] = model_usage(traces)
     return report
+
+
+def model_usage(traces: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """How the model was really used: answered vs fell back (and why), latency, tokens."""
+    asked = [t for t in traces if "model" in t]
+    if not asked:
+        return None
+    ok = [t for t in asked if t["engine"] == "claude"]
+    ms = sorted(t["ms"] for t in ok)
+    return {
+        "model": next((t["model"] for t in ok), asked[0]["model"]),
+        "calls": len(asked),
+        "answered": len(ok),
+        "fallbacks": sorted(t["fallback"] for t in asked if "fallback" in t),
+        "p50_ms": ms[len(ms) // 2] if ms else None,
+        "p95_ms": ms[min(len(ms) - 1, int(len(ms) * 0.95))] if ms else None,
+        "input_tokens": sum(t["input_tokens"] for t in ok),
+        "output_tokens": sum(t["output_tokens"] for t in ok),
+        "cache_read_tokens": sum(t.get("cache_read_tokens", 0) for t in ok),
+        "cache_write_tokens": sum(t.get("cache_write_tokens", 0) for t in ok),
+        "cost_usd": cost_usd(ok),
+    }
+
+
+def cost_usd(traces: list[dict[str, Any]]) -> float | None:
+    model = next((t["model"] for t in traces), "")
+    price = next((p for name, p in PRICES.items() if model.startswith(name)), None)
+    if price is None:
+        return None
+    per_in, per_out = price[0] / 1e6, price[1] / 1e6
+    total = sum(
+        t["input_tokens"] * per_in
+        + t.get("cache_read_tokens", 0) * per_in * 0.1
+        + t.get("cache_write_tokens", 0) * per_in * 1.25
+        + t["output_tokens"] * per_out
+        for t in traces
+    )
+    return round(total, 4)
 
 
 # -------------------------------------------------------------------- calls
@@ -175,18 +223,28 @@ def main() -> int:
 
     print(f"Live Call Assist evals · extractor={extractor.name}\n")
     print("Understanding (labelled utterances)")
-    print(f"  {'label':<16}{'precision':>10}{'recall':>9}{'floor':>8}")
+    print(f"  {'label':<16}{'precision':>10}{'recall':>9}{'floors (p/r)':>14}")
     gates = []
     for field in ("intents", "vulnerabilities", "risks"):
         m = u[field]
-        floor = RECALL_FLOOR[field]
-        ok = m["recall"] >= floor
+        p_floor, r_floor = PRECISION_FLOOR[field], RECALL_FLOOR[field]
+        ok = m["precision"] >= p_floor and m["recall"] >= r_floor
         gates.append(ok)
         print(
-            f"  {field:<16}{m['precision']:>10.2f}{m['recall']:>9.2f}{floor:>8.2f}"
+            f"  {field:<16}{m['precision']:>10.2f}{m['recall']:>9.2f}{p_floor:>9.2f}/{r_floor:.2f}"
             f"  {'ok' if ok else 'BELOW FLOOR'}"
         )
     print(f"  identity capture (name + postcode): {u['identity_capture']:.0%}")
+    if m := u["model"]:
+        print(
+            f"  model {m['model']}: answered {m['answered']}/{m['calls']}, "
+            f"p50 {m['p50_ms']} ms, p95 {m['p95_ms']} ms, "
+            f"tokens {m['input_tokens']} in / {m['output_tokens']} out"
+        )
+        cost = f"≈ ${m['cost_usd']:.4f} at list price" if m["cost_usd"] is not None else "cost unknown"
+        print(f"  prompt cache: {m['cache_read_tokens']} read, {m['cache_write_tokens']} written · {cost}")
+        if m["fallbacks"]:
+            print(f"  fell back to rules: {', '.join(m['fallbacks'])}")
     if u["misses"]:
         print("  misses:")
         for miss in u["misses"]:
