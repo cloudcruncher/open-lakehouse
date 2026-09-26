@@ -36,6 +36,7 @@ Live Call Assist. Open work is in [docs/next-steps.md](docs/next-steps.md); read
   full PII clearance. A new bronze/ops table needs a contract and tags, or `make contracts` misses it.
 - Superset queries Trino with each colleague's own OAuth2 token (no service account). Config:
   `infra/superset/`. Portals must be opened on `localhost`, not `127.0.0.1` (Keycloak redirect URIs).
+  The token dies with the Keycloak session (30 min idle); SQL Lab then asks to authorize again.
 - `make sql` passes the query through make, so `$` is eaten: for `"table$snapshots"` use
   `scripts/trino-sql.sh ops_admin '...'` directly.
 - `docker kill` bypasses restart policies; `make heal` reconciles.

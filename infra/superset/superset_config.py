@@ -72,6 +72,27 @@ def FLASK_APP_MUTATOR(app):  # noqa: N802 - name set by Superset
         if request.host.split(":")[0] == "127.0.0.1":
             return redirect(request.url.replace("//127.0.0.1", "//localhost", 1), code=308)
 
+    # A colleague's saved Trino token dies with their Keycloak session (30 min idle).
+    # Keycloak refuses the refresh with HTTP 400, which Superset treats as an unrelated
+    # error: it keeps the dead token and every query fails with "400 Client Error". As
+    # Trino's auth error instead, Superset deletes the token and asks to authorize again.
+    import requests
+    from superset.db_engine_specs.trino import TrinoAuthError, TrinoEngineSpec
+
+    fresh_token = TrinoEngineSpec.get_oauth2_fresh_token.__func__
+
+    def get_oauth2_fresh_token(cls, config, refresh_token):
+        try:
+            return fresh_token(cls, config, refresh_token)
+        except requests.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code in (400, 401):
+                raise TrinoAuthError(
+                    "error 401: saved sign-in expired, authorize again"
+                ) from exc
+            raise  # Keycloak down (5xx) is an outage, not an expired sign-in
+
+    TrinoEngineSpec.get_oauth2_fresh_token = classmethod(get_oauth2_fresh_token)
+
 
 # SQL Lab queries Trino with the colleague's own Keycloak token: Superset asks once per
 # colleague ("Authorize"), stores and refreshes the token, and sends it on every query.
