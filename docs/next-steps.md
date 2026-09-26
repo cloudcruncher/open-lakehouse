@@ -5,9 +5,10 @@ login, the nightly silver lease race, SLO panels showing "No data", and the quar
 (PR #5). Then (PR #7): a SQL workbench (Superset SQL Lab) that queries Trino as each colleague,
 bronze readable by platform admins with raw payloads NULL (which also closed quarantine payloads
 to them), `SHOW TABLES` working, and sign-in via `127.0.0.1` redirected. Then the AI layer
-(PRs #8 to #10): a labelling guide that brought Claude's precision to 1.00 and is prompt-cached,
-the after-call note drafted by Claude from the transcript, a daily spend cap, and AI usage and
-cost on the Live Call Assist dashboard with two alerts. `make verify`: 56/56.
+(PRs #8 to #11): a labelling guide that brought Claude's precision to 1.00 and is prompt-cached,
+the after-call note drafted by Claude from the transcript, a daily spend cap, AI usage and
+cost on the Live Call Assist dashboard with two alerts, and "Ask the assistant".
+`make verify`: 56/56.
 
 Ordered by value. Each item says where to start and how to know it is done.
 
@@ -74,13 +75,12 @@ needs the contents.
 - Done when: ops_admin can read one payload for a stated reason for a limited time, and the
   access is in the audit chain.
 
-## 9. "Ask the assistant" panel
-A colleague types a question during a call ("refund rule for card fraud?", "any open
-complaints?"). Claude answers from the procedure library with citations, and may call the
-same governed MCP tools as that colleague (OPA masks apply, every lookup audited).
-- Where: `call_assist/` (a new endpoint and console panel), under the spend cap (ADR 12).
-- Done when: answers cite a procedure or a tool result, pass the grounding check, fall back
-  to plain search without a key or budget, and an analyst's question returns masked data.
+## 9. Prove "Ask the assistant" end to end (take it out of pilot)
+Unit tests cover every route with a fake model; `verify` does not ask a question yet.
+- Where: `scripts/verify.sh` (CI has no key, so it proves the search fallback) and an eval
+  set of typed questions with expected routes for `call-assist-evals --extractor claude`.
+- Done when: a question in CI returns the right procedure card, and the eval reports route
+  accuracy for Claude.
 
 ## 10. Grow the understanding eval set
 35 labelled lines is a small sample; 1.00 on it is not proof. Add 100+ messier lines (from

@@ -120,6 +120,7 @@ class CallSession:
         today: Callable[[], date] = lambda: datetime.now(UTC).date(),
         fresh_retry_delay_s: float = 4.0,
         summarizer: Any = None,
+        assistant: Any = None,
     ) -> None:
         self.call_id = call_id
         self.colleague = colleague
@@ -130,6 +131,7 @@ class CallSession:
         self.today = today
         self.fresh_retry_delay_s = fresh_retry_delay_s
         self.summarizer = summarizer
+        self.assistant = assistant
         self.signals = Signals()
         self.transcript: list[Utterance] = []
         self.cards: list[Card] = []
@@ -196,6 +198,60 @@ class CallSession:
             await self._show(card, None, time.monotonic())
             await self.emit({"type": "ended"})
             return card
+
+    async def ask(self, question: str) -> None:
+        """A question the colleague typed: answered from procedures, or by a fixed lookup.
+
+        The assistant (Claude) only routes: it answers from retrieved procedures, or names
+        which governed lookup answers it. Lookups run through the same handlers as spoken
+        intents, as the colleague, for the customer already identified. The model never
+        sees their results. Without a model, the best-matching procedure is shown.
+        """
+        async with self._lock:
+            received = time.monotonic()
+            await self.emit({"type": "question", "text": question})
+            procs = [p for p, score in self.index.search(question, k=3) if score > 0]
+            decision, trace = None, None
+            if self.assistant is not None:
+                decision, trace = await asyncio.to_thread(self.assistant.route, question, procs)
+            title = f"You asked: {question[:80]}"
+            evidence: list[dict[str, Any]] = [{"question": question}]
+            route = (decision or {}).get("route")
+            if route == "look_up":
+                handler = {
+                    "unrecognised_payment": self._card_fraud,
+                    "open_complaint": self._complaint_chase,
+                    "sent_payment_status": self._payment_missing,
+                    "balances": self._balances,
+                }[decision["what"]]
+                if self.tools is not None and self.customer is not None:
+                    # The handler shows its own governed card; say what was looked up.
+                    await self._show(
+                        Card("status", title, f"Looked up: {decision['what'].replace('_', ' ')}.", evidence, ai=trace),
+                        None,
+                        received,
+                    )
+                    await handler(None, received)
+                    return
+                card = Card(
+                    "status",
+                    title,
+                    "Identify the caller first: the assistant only looks up the customer on this call.",
+                    evidence,
+                )
+            elif route == "procedures":
+                cited = decision["procedure_ids"]
+                evidence.append({"procedures": {i: self.index.by_id(i).body for i in cited}})
+                card = Card("insight", title, decision["answer"], evidence, self._proc(cited[0]))
+            elif route == "cannot_answer":
+                card = Card("status", title, f"The assistant can't answer that: {decision['reason']}", evidence)
+            elif procs:
+                # Plain search: no model, budget spent, or its answer failed a check.
+                card = Card("insight", title, procs[0].excerpt(3), evidence, self._proc(procs[0].id))
+            else:
+                card = Card("status", title, "No procedure matches. Try other words, or ask a team leader.", evidence)
+            card.ai = trace
+            await self._show(card, None, received)
 
     async def emit(self, event: dict[str, Any]) -> None:
         await self.emit_raw({"call_id": self.call_id, **event})

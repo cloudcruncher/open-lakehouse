@@ -37,6 +37,10 @@
 
     <section class="panel guidance">
       <h2>Guidance</h2>
+      <form id="ask" class="ask" autocomplete="off">
+        <input id="question" maxlength="300" placeholder="Ask the assistant: a procedure, or this caller's complaints, payments, balances" disabled>
+        <button class="primary small" disabled>Ask</button>
+      </form>
       <div id="verifybar" class="verifybar" hidden>
         <span>Identity not yet verified. Account cards stay locked until you confirm ID&amp;V.</span>
         <button id="verify" class="primary small">ID&amp;V confirmed</button>
