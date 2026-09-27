@@ -15,6 +15,7 @@ secrets: ## Generate local secrets and TLS certificates (idempotent)
 up: secrets ## Start the platform (idempotent: safe to re-run at any time)
 	$(COMPOSE) up -d --build --wait
 	$(if $(filter streaming,$(PROFILES)),$(COMPOSE) run --rm tenant-reconcile)
+	$(if $(filter ops,$(PROFILES)),$(COMPOSE) --profile tenant-code up -d --wait)
 	@$(MAKE) --no-print-directory urls
 
 seed: ## Load synthetic core-banking data (no-op if already loaded)
@@ -59,6 +60,9 @@ tenants: ## Validate tenant onboarding files (tenants/*.yaml, ADR 14)
 tenants-apply: ## Reconcile tenant files into Kafka, Polaris and Keycloak (runs on `make up` too)
 	$(COMPOSE) run --rm tenant-reconcile
 
+tenants-render: ## Regenerate tenant code servers (compose.yaml) and Dagster's workspace.yaml
+	@uv run --quiet tenants/render.py
+
 chaos: ## Kill every component in turn; measure safe degradation and time-to-recover
 	@scripts/chaos.sh
 
@@ -76,6 +80,7 @@ lint: ## Lint Python, check Rego formatting, validate alert rules and dashboards
 	docker run --rm -v "$$PWD/infra/opa:/work:ro" openpolicyagent/opa:1.21.0-static fmt --list --fail /work/policies
 	docker run --rm --entrypoint promtool -v "$$PWD/infra/prometheus:/w:ro" prom/prometheus:v3.15.0 check rules /w/rules/slo.yml
 	uv run --quiet infra/grafana/build_dashboards.py >/dev/null && git diff --exit-code -- infra/grafana/dashboards
+	uv run --quiet tenants/render.py --check
 	docker run --rm -v "$$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.11.0 -S warning scripts/*.sh jobs/spark/pipelines/run.sh infra/postgres/init/*.sh
 
 dashboards: ## Regenerate Grafana dashboards from infra/grafana/build_dashboards.py
@@ -105,4 +110,4 @@ down: ## Stop the platform (data is kept)
 destroy: ## Stop and DELETE all data volumes (asks first)
 	@read -p "Delete ALL lakehouse data volumes? [y/N] " a && [[ $$a == y ]] && $(COMPOSE) --profile jobs down -v
 
-.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts tenants tenants-apply chaos heal test lint dashboards sql agent urls down destroy
+.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts tenants tenants-apply tenants-render chaos heal test lint dashboards sql agent urls down destroy

@@ -1,7 +1,7 @@
 """Declarative, idempotent Polaris setup: catalog, namespaces, identities and grants.
 
 Safe to run on every `make up`. Each resource is created only if missing; engine
-credentials are reused while they still work and rotated if they don't, so a lost
+credentials are reused while they still work and reset if they don't, so a lost
 secrets volume heals itself on the next run.
 
 Security model (two layers):
@@ -223,8 +223,8 @@ def write_env_file(path: Path, values: dict[str, str]) -> None:
     tmp.replace(path)  # atomic: readers never see a half-written file
 
 
-def ensure_principal(p: Polaris, engine: Engine) -> None:
-    secret_file = SECRETS_DIR / f"{engine.principal}.env"
+def ensure_principal(p: Polaris, engine: Engine, secret_file: Path | None = None) -> None:
+    secret_file = secret_file or SECRETS_DIR / f"{engine.principal}.env"
     current = read_env_file(secret_file)
     cid = current.get(f"{engine.env_prefix}_CLIENT_ID")
     csecret = current.get(f"{engine.env_prefix}_CLIENT_SECRET")
@@ -237,8 +237,10 @@ def ensure_principal(p: Polaris, engine: Engine) -> None:
         creds = None
         log.info("principal %s exists and stored credentials are valid", engine.principal)
     else:
-        creds = p.call("POST", f"/api/management/v1/principals/{engine.principal}/rotate")["credentials"]
-        log.warning("principal %s credentials missing or invalid -> rotated", engine.principal)
+        # Reset, not rotate: rotate is the principal changing its own secret, and Polaris refuses
+        # it to the admin (403 ROTATE_CREDENTIALS).
+        creds = p.call("POST", f"/api/management/v1/principals/{engine.principal}/reset", {})["credentials"]
+        log.warning("principal %s credentials missing or invalid -> reset", engine.principal)
 
     if creds:
         write_env_file(
