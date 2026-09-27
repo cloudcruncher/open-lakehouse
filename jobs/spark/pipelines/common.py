@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import sys
 import time
+import urllib.request
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -169,6 +171,39 @@ def record_checks(
                 asset_key=_asset_key(table),
                 metadata={"observed": float(c.observed), "threshold": c.threshold, "run_id": run_id},
             )
+
+
+def _post_json(url: str, body: dict) -> None:
+    req = urllib.request.Request(
+        url, json.dumps(body).encode(), {"Content-Type": "application/json"}
+    )
+    with urllib.request.urlopen(req, timeout=5):  # noqa: S310 - fixed internal URL
+        pass
+
+
+def report_to_dagster(table: str, checks: list[Check], metadata: dict) -> None:
+    """A write made outside Dagster (the CDC stream), recorded in Dagster as a runless
+    materialization plus its check results, so the asset page shows what silver really is.
+
+    Observability, never a dependency: if Dagster is down the stream carries on, and says so.
+    """
+    url = os.environ.get("DAGSTER_URL", "")
+    if not url:
+        return
+    key = _asset_key(table)
+    try:
+        _post_json(f"{url}/report_asset_materialization/{key}", {"metadata": metadata})
+        for c in checks:
+            _post_json(
+                f"{url}/report_asset_check/{key}",
+                {
+                    "check_name": c.name,
+                    "passed": bool(c.passed),
+                    "metadata": {"observed": float(c.observed), "threshold": c.threshold},
+                },
+            )
+    except OSError as exc:
+        print(f"[dagster] {url} unreachable ({exc}); {table} not reported", file=sys.stderr)
 
 
 def record_run(spark: SparkSession, **kw) -> None:
