@@ -34,7 +34,8 @@
       "contact_centre": {
         "schemas": [
           "gold",
-          "silver"
+          "silver",
+          "canary_data"
         ],
         "pii": "partial",
         "special_category": true
@@ -42,14 +43,16 @@
       "complaints_investigator": {
         "schemas": [
           "gold",
-          "silver"
+          "silver",
+          "canary_data"
         ],
         "pii": "full",
         "special_category": true
       },
       "analyst": {
         "schemas": [
-          "gold"
+          "gold",
+          "canary_data"
         ],
         "pii": "none",
         "special_category": false
@@ -59,7 +62,8 @@
           "bronze",
           "silver",
           "gold",
-          "ops"
+          "ops",
+          "canary_data"
         ],
         "pii": "none",
         "special_category": false,
@@ -108,6 +112,10 @@
       },
       "ops.cdc_pending": {
         "payload": "pii.raw_record"
+      },
+      "canary_data.people": {
+        "name": "pii.name",
+        "email": "pii.contact"
       }
     },
     "brand_scoped_tables": [

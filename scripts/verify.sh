@@ -81,6 +81,21 @@ expect_contains "gold refreshed within 24h" \
   "$(last "$(sql ops_admin "SELECT max(refreshed_at) > current_timestamp - INTERVAL '1' DAY FROM lakehouse.gold.customer_360")")" "^True$"
 
 echo "▸ Data contracts (governance as code)"
+# The canary tenant (ADR 14) goes through the real path: its code server writes as its own
+# identity, then each colleague reads it through Trino + OPA. Runs before the contracts check,
+# which compares its live table with contracts/canary.odcs.yaml.
+if [[ -n "$("${DC[@]}" --profile tenant-code ps -q --status running tenant-canary-code 2>/dev/null)" ]]; then
+  echo "▸ Canary tenant (ADR 14)"
+  expect_contains "canary code server writes canary_data.people as its own identity" \
+    "$(make --no-print-directory canary 2>&1)" "RUN_SUCCESS"
+  q="SELECT coalesce(email, 'NULL') || ' ' || name FROM lakehouse.canary_data.people WHERE person_id = 1"
+  expect_contains "canary: bob (full PII) sees the email" "$(last "$(sql bob "$q")")" "^ada@canary.example Ada Canary$"
+  expect_contains "canary: alice (partial PII) sees it masked" "$(last "$(sql alice "$q")")" '^a\*\*\*@canary.example Ada Canary$'
+  expect_contains "canary: carol (no PII) gets NULL email, initial only" "$(last "$(sql carol "$q")")" "^NULL A\.$"
+  expect_contains "canary: no brand filter on tenant data (5 rows for alice)" \
+    "$(last "$(sql alice "SELECT count(*) FROM lakehouse.canary_data.people")")" "^5$"
+fi
+
 expect_contains "contracts valid (ODCS), policy tags agree with OPA, live tables match" \
   "$(uv run --quiet contracts/check.py --live 2>&1)" ": OK$"
 

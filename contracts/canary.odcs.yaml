@@ -1,0 +1,26 @@
+# Data contract for the canary tenant's table (ODCS v3.2.0, ADR 14). Synthetic data the
+# platform tests itself against: masks by clearance, grants, and live schema drift.
+apiVersion: v3.2.0
+kind: DataContract
+id: urn:open-lakehouse:contract:canary-people
+name: canary_people
+version: 1.0.0
+status: active
+tenant: canary
+domain: data-platform
+tags: [canary, synthetic, pii]
+description:
+  purpose: Five synthetic people, so platform checks (masks, grants, credential isolation) have data to run against.
+  usage: Read by `make verify` as each colleague; written only by the canary's code server (`make canary`).
+  limitations: Synthetic. Not a data product; never join it to real data.
+schema:
+  - name: people
+    physicalName: lakehouse.canary_data.people
+    physicalType: table
+    logicalType: object
+    description: One row per synthetic person, replaced on every canary run.
+    properties:
+      - { name: person_id, logicalType: integer, physicalType: integer, required: true, primaryKey: true, classification: public }
+      - { name: name, logicalType: string, physicalType: varchar, classification: confidential, tags: [pii.name] }
+      - { name: email, logicalType: string, physicalType: varchar, classification: confidential, tags: [pii.contact] }
+      - { name: region, logicalType: string, physicalType: varchar, classification: public }

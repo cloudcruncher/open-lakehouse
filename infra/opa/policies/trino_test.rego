@@ -196,3 +196,25 @@ test_metrics_scraper_cannot_query if {
 test_colleague_cannot_read_system_information if {
 	not trino.allow with input as {"context": ctx("alice"), "action": {"operation": "ReadSystemInformation"}}
 }
+
+# Tenant namespaces (ADR 14): readable only where a persona lists them; the canary is listed
+# for every persona so each clearance level is tested against real tenant data.
+test_every_persona_reads_the_canary if {
+	every user in {"alice", "bob", "carol", "ops_admin"} {
+		trino.allow with input as select(user, "canary_data", "people")
+	}
+}
+
+test_unlisted_tenant_namespace_denied if {
+	not trino.allow with input as select("carol", "markets_gold", "trades")
+}
+
+test_canary_email_masked_by_clearance if {
+	mask_for(column("alice", "canary_data", "people", "email", "varchar")) == "regexp_replace(email, '^(.).*(@.*)$', '$1***$2')"
+	not mask_for(column("bob", "canary_data", "people", "email", "varchar"))
+	mask_for(column("carol", "canary_data", "people", "email", "varchar")) == "CAST(NULL AS varchar)"
+}
+
+test_canary_has_no_row_filter if {
+	count(trino.rowFilters) == 0 with input as row_filter("alice", "canary_data", "people")
+}
