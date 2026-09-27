@@ -109,6 +109,9 @@ if running kafka; then
   expect_contains "tenant identity writes its own namespace, refused on silver" \
     "$("${DC[@]}" run --rm -T --entrypoint tenant-reconcile tenant-reconcile --probe 2>&1)" \
     "create in markets_bronze -> 200; create in silver -> 403"
+  # Running, not producing: whether Coinbase answers is the tenant's concern, not the platform's.
+  expect_contains "tenant service runs from its tenant file (markets-data coinbase-feed)" \
+    "$("${DC[@]}" --profile tenant-code ps -a --format '{{.State}}' tenant-markets-data-coinbase-feed 2>&1)" "^running$"
   # A tenant repo's own Compose project joins the platform's networks by name (ADR 14).
   expect_contains "a container outside this project joins open-lakehouse_data and reaches Polaris" \
     "$(docker run --rm --network open-lakehouse_data --entrypoint python open-lakehouse/platform:dev \
