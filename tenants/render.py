@@ -135,6 +135,14 @@ def service(t: dict) -> str:
 """
 
 
+def secret_env(s: dict) -> str:
+    """Where each secret the service uses sits (filled by `make tenant-secret`; may be missing)."""
+    return "".join(
+        f"      {x.upper().replace('-', '_')}_ENV_FILE: /run/tenant-secrets/{x}.env\n"
+        for x in s.get("secrets", [])
+    )
+
+
 def workload(t: dict, s: dict) -> str:
     """A tenant's long-running service: same identity as its code server, no Dagster database."""
     name = t["name"]
@@ -155,7 +163,7 @@ def workload(t: dict, s: dict) -> str:
     # {s["description"]}
     networks: [data, stream]
 {command}    environment:
-{tenant_env(name)}    volumes:
+{tenant_env(name)}{secret_env(s)}    volumes:
 {secrets_mount(name)}{state}    mem_limit: {s["memoryMb"]}m
 """
 

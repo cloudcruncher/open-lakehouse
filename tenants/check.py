@@ -71,6 +71,18 @@ def check_one(path: Path, t: dict) -> list[str]:
         errors.append(f"{path.name}: service '{dup}' is declared twice")
     if "code" in names:
         errors.append(f"{path.name}: service name 'code' is taken by the code server")
+    secrets = [x["name"] for x in t.get("secrets", [])]
+    for dup in sorted({n for n in secrets if secrets.count(n) > 1}):
+        errors.append(f"{path.name}: secret '{dup}' is declared twice")
+    if "polaris" in secrets:
+        errors.append(f"{path.name}: secret name 'polaris' is taken by the platform's credentials")
+    for svc in t.get("services", []):
+        for name in svc.get("secrets", []):
+            if name not in secrets:
+                errors.append(
+                    f"{path.name}: service '{svc['name']}' uses secret '{name}', "
+                    "which the tenant does not declare under secrets"
+                )
     return errors
 
 

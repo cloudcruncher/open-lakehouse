@@ -125,3 +125,19 @@ def test_service_image_must_be_pinned(tmp_path):
         tmp_path, lambda t: t.update(services=[dict(SVC, image="x/y:latest")])
     )
     assert any("services/0/image" in e for e in errors)
+
+
+def test_a_service_may_only_use_declared_secrets(tmp_path):
+    errors = errors_for(
+        tmp_path,
+        lambda t: t.update(secrets=[], services=[dict(SVC, secrets=["shadowtraffic"])]),
+    )
+    assert any("uses secret 'shadowtraffic', which the tenant does not declare" in e for e in errors)
+
+
+def test_the_polaris_secret_name_is_the_platforms(tmp_path):
+    errors = errors_for(
+        tmp_path,
+        lambda t: t.update(secrets=[{"name": "polaris", "description": "Try to overwrite it."}]),
+    )
+    assert any("'polaris' is taken" in e for e in errors)

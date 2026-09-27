@@ -30,6 +30,9 @@ namespaces:
   - markets_bronze
   - markets_silver
   - markets_gold
+secrets:
+  - name: shadowtraffic
+    description: ShadowTraffic licence (env file from shadowtraffic.io) for the card-authorisation generator.
 codeLocation:
   image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.2.0
   module: markets_data.definitions
