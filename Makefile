@@ -62,6 +62,9 @@ tenants: ## Validate tenant onboarding files (tenants/*.yaml, ADR 14)
 tenants-apply: ## Reconcile tenant files into Kafka, Polaris and Keycloak (runs on `make up` too)
 	$(COMPOSE) run --rm tenant-reconcile
 
+canary: ## Run the canary tenant's pipeline in its own code server, as its own identity (ADR 14)
+	$(COMPOSE) --profile tenant-code exec -T tenant-canary-code dagster asset materialize -m canary_tenant.definitions --select canary_data/people
+
 mem: ## Memory per container against its limit, and the total against Docker's (ADR 14)
 	@scripts/mem.sh
 
@@ -115,4 +118,4 @@ down: ## Stop the platform (data is kept)
 destroy: ## Stop and DELETE all data volumes (asks first)
 	@read -p "Delete ALL lakehouse data volumes? [y/N] " a && [[ $$a == y ]] && $(COMPOSE) --profile jobs --profile tenant-code down -v
 
-.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts tenants tenants-apply tenants-render mem chaos heal test lint dashboards sql agent urls down destroy
+.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts tenants tenants-apply tenants-render canary mem chaos heal test lint dashboards sql agent urls down destroy

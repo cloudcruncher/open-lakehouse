@@ -46,6 +46,14 @@ tenant is a decision in its PR. `make mem` shows use against limits per containe
 servers are switched off with `make up PROFILES="streaming ops"` (after `make down` if running);
 the reconciler still runs, so topics, namespaces and grants stay in place.
 
+The canary (`tenants/canary.yaml`) is the platform's own tenant: five synthetic people in
+`canary_data.people`, email tagged PII. Its code (`jobs/spark/orchestration/canary_tenant/`) runs
+in the generated `tenant-canary-code` server on the platform's own image, so every platform PR
+exercises the real path: reconcile, code server, tenant-only credentials, Spark writing through
+Polaris. `make canary` runs it (about 25 s, peaks near 850 MiB of its 1024). Dagster's
+`workspace.yaml` is baked into the orchestrator image, so a new location appears after `make up`
+(it rebuilds); with tenants switched off, their locations show as unavailable in the UI.
+
 Known laptop compromise: tenant code servers share the Dagster instance database with the
 platform (runs execute in the code server). In production each tenant gets its own run launcher
 and database credentials.

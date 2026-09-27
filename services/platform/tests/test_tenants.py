@@ -24,8 +24,13 @@ def spec(name="markets.trades", partitions=3, configs=WEEK):
     return TopicSpec(name, partitions, dict(configs))
 
 
+def markets_data():
+    return next(t for t in load_tenants(REPO_TENANTS) if t.name == "markets-data")
+
+
 def test_loads_the_committed_tenants():
-    (t,) = load_tenants(REPO_TENANTS)
+    assert [t.name for t in load_tenants(REPO_TENANTS)] == ["canary", "markets-data"]
+    t = markets_data()
     assert (t.name, t.ident, t.group) == ("markets-data", "tenant_markets_data", "tenant-markets-data")
     assert t.namespaces == ("markets_bronze", "markets_silver", "markets_gold")
     fx = next(s for s in t.topics if s.name == "markets.reference.fx-rates")
@@ -69,7 +74,7 @@ def test_config_drift_sends_the_full_desired_set():
 
 
 def test_orphans_ignore_platform_and_internal_topics():
-    (t,) = load_tenants(REPO_TENANTS)
+    t = markets_data()
     existing = [
         "markets.coinbase.trades",
         "corebank.core.customers",
