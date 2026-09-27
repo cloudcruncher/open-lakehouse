@@ -9,10 +9,13 @@
      special_category column in a contract is masked by OPA with that tag, and every
      column OPA masks is declared in a contract. A new PII column can't ship unmasked,
      and a mask can't silently drift from its classification.
-  3. With --live: the running tables match the contract (no missing or undeclared
+  3. With --tenant NAME (a tenant repo's CI, ADR 14): only tables in that tenant's own
+     namespaces (tenants/NAME.yaml) may appear, and only masks on those tables are compared.
+  4. With --live: the running tables match the contract (no missing or undeclared
      columns, same physical types). Schema drift fails `make verify`.
 
 Usage: uv run contracts/check.py [--live]
+       uv run contracts/check.py --tenant NAME --dir PATH   (the tenant-contracts workflow)
 """
 
 from __future__ import annotations
@@ -38,29 +41,51 @@ def policy_tag(tags: list[str]) -> str | None:
     return found[0] if found else None
 
 
-def contracts() -> list[tuple[Path, dict]]:
+def contracts(folder: Path = ROOT / "contracts") -> list[tuple[Path, dict]]:
     return [
-        (p, yaml.safe_load(p.read_text()))
-        for p in sorted((ROOT / "contracts").glob("*.odcs.yaml"))
+        (p, yaml.safe_load(p.read_text())) for p in sorted(folder.glob("*.odcs.yaml"))
     ]
 
 
-def check_static() -> list[str]:
+def tenant_namespaces(name: str) -> set[str]:
+    path = ROOT / "tenants" / f"{name}.yaml"
+    if not path.exists():
+        raise SystemExit(f"no tenant {name!r}: onboard it first (tenants/README.md)")
+    return set(yaml.safe_load(path.read_text())["namespaces"])
+
+
+def check_static(
+    folder: Path = ROOT / "contracts", namespaces: set[str] | None = None
+) -> list[str]:
+    """namespaces=None checks the platform's own contracts; a set scopes the check to a tenant."""
     errors = []
     declared: dict[str, dict[str, str]] = {}
-    for path, c in contracts():
+    found = contracts(folder)
+    if namespaces is not None and not found:
+        errors.append(f"{folder}: no *.odcs.yaml contracts found")
+    for path, c in found:
         for e in jsonschema.Draft201909Validator(SCHEMA).iter_errors(c):
             errors.append(
                 f"{path.name}: schema: {'/'.join(map(str, e.absolute_path))}: {e.message[:160]}"
             )
         for obj in c.get("schema", []):
-            table = obj["physicalName"].removeprefix("lakehouse.")
+            table = obj.get("physicalName", "").removeprefix("lakehouse.")
+            if namespaces is not None and table.split(".")[0] not in namespaces:
+                errors.append(
+                    f"{path.name}: {table or '(no physicalName)'} is outside this tenant's "
+                    f"namespaces {sorted(namespaces)}"
+                )
+                continue
             for prop in obj.get("properties", []):
                 tag = policy_tag(prop.get("tags", []))
                 if tag:
                     declared.setdefault(table, {})[prop["name"]] = tag
 
-    masked = ENTITLEMENTS["column_tags"]
+    masked = {
+        t: cols
+        for t, cols in ENTITLEMENTS["column_tags"].items()
+        if namespaces is None or t.split(".")[0] in namespaces
+    }
     for table, cols in declared.items():
         for col, tag in cols.items():
             have = masked.get(table, {}).get(col)
@@ -132,9 +157,16 @@ def check_live() -> list[str]:
     return errors
 
 
+def arg(flag: str) -> str | None:
+    return sys.argv[sys.argv.index(flag) + 1] if flag in sys.argv[:-1] else None
+
+
 def main() -> int:
-    errors = check_static()
-    n = len(contracts())
+    tenant = arg("--tenant")
+    folder = Path(arg("--dir") or ROOT / "contracts").resolve()
+    namespaces = tenant_namespaces(tenant) if tenant else None
+    errors = check_static(folder, namespaces)
+    n = len(contracts(folder))
     if "--live" in sys.argv:
         errors += check_live()
     for e in errors:
@@ -144,6 +176,8 @@ def main() -> int:
         if "--live" in sys.argv
         else "schema + policy tags"
     )
+    if tenant:
+        mode += f", tenant {tenant}"
     print(
         f"contracts: {n} checked ({mode}): {'OK' if not errors else f'{len(errors)} problem(s)'}"
     )

@@ -34,6 +34,7 @@ These names are a versioned contract: renaming one is a breaking change for ever
 | Code server | `dagster code-server` on port 4000, module from `codeLocation.module`; the platform runs it as `tenant-<name>-code` once `codeLocation.deploy: true` |
 | Credentials | `/run/tenant-secrets/polaris.env` (`POLARIS_CLIENT_ID`, `POLARIS_CLIENT_SECRET`); the mount holds this tenant's folder only (`POLARIS_ENV_FILE` points at it) |
 | Other environment | `TENANT`, `KAFKA_BOOTSTRAP=kafka:9092`, `OPENLINEAGE_URL=http://marquez:5000`, `AWS_REGION` |
+| Contracts check | `uses: cloudcruncher/open-lakehouse/.github/workflows/tenant-contracts.yml@<version>` with `tenant: <name>`, `platform-ref: <version>`: ODCS schema, tables only in the tenant's namespaces, and every `pii.*` / `special_category` column masked by the platform's OPA policy (a new mask is a platform PR) |
 
 Deploying a new image is a PR here that bumps `codeLocation.image` (and sets `deploy: true` the
 first time), then `make tenants-render`: the generated `compose.yaml` block and Dagster's

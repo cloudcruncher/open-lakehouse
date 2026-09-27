@@ -1,0 +1,57 @@
+# Reusable: a tenant repo's CI calls this to check its data contracts against the platform's
+# rules (ADR 14). Seconds, no Docker. In the tenant repo:
+#
+#   jobs:
+#     contracts:
+#       uses: cloudcruncher/open-lakehouse/.github/workflows/tenant-contracts.yml@v0.2.0
+#       with: { tenant: markets-data, platform-ref: v0.2.0 }
+#
+# Fails when a contract breaks the ODCS schema, names a table outside the tenant's namespaces,
+# or tags a column pii.* / special_category that the platform's OPA policy does not mask yet
+# (that needs a platform PR, so personal data can't ship unmasked from a tenant repo).
+name: tenant-contracts
+
+on:
+  workflow_call:
+    inputs:
+      tenant:
+        description: The tenant's name, as in the platform's tenants/<name>.yaml
+        required: true
+        type: string
+      contracts-dir:
+        description: Folder of *.odcs.yaml contracts in the tenant repo
+        default: contracts
+        type: string
+      platform-ref:
+        description: Platform version to check against; pin the same release as the tenant's images
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: data contracts (platform rules)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: cloudcruncher/open-lakehouse
+          ref: ${{ inputs.platform-ref }}
+          path: .platform
+          persist-credentials: false
+          sparse-checkout: |
+            contracts
+            tenants
+            infra/opa/data
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Check contracts
+        env:
+          TENANT: ${{ inputs.tenant }}
+          CONTRACTS_DIR: ${{ inputs.contracts-dir }}
+        run: uv run --quiet .platform/contracts/check.py --tenant "$TENANT" --dir "$CONTRACTS_DIR"
