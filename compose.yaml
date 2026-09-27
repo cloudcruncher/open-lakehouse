@@ -888,15 +888,17 @@ services:
       MARQUEZ_HOST: marquez
       MARQUEZ_PORT: "5000"
       WEB_PORT: "3000"
+      NODE_OPTIONS: --max-http-header-size=65536   # the same cookies; Node's default is 16 KiB
     mem_limit: 256m
 
-  lineage-ui:
+  # Sign-in only: nginx (lineage-ui) asks it whether a browser is signed in, then proxies the
+  # request itself (infra/lineage-ui/default.conf says why oauth2-proxy can't proxy Marquez).
+  lineage-sso:
     <<: *service
     profiles: [ops]
     image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.4
-    networks: [data, edge]
+    networks: [edge]
     depends_on:
-      marquez-web: { condition: service_started }
       keycloak-reconcile: { condition: service_completed_successfully }
     command: *oauth2-proxy
     environment:
@@ -905,11 +907,22 @@ services:
       OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET}
       OAUTH2_PROXY_COOKIE_NAME: _lineage_sso
       OAUTH2_PROXY_REDIRECT_URL: http://localhost:3003/oauth2/callback
-      OAUTH2_PROXY_UPSTREAMS: http://marquez-web:3000/
+      OAUTH2_PROXY_UPSTREAMS: static://202
       # Lineage is metadata, not data: every colleague may explore it.
       OAUTH2_PROXY_EMAIL_DOMAINS: bank.example
-    ports: ["127.0.0.1:3003:4180"]
     mem_limit: 64m
+
+  lineage-ui:
+    <<: *service
+    profiles: [ops]
+    image: nginx:1.30.5-alpine
+    networks: [data, edge]
+    depends_on:
+      marquez-web: { condition: service_started }
+      lineage-sso: { condition: service_started }
+    volumes: [./infra/lineage-ui/default.conf:/etc/nginx/conf.d/default.conf:ro]
+    ports: ["127.0.0.1:3003:8080"]
+    mem_limit: 32m
 
   # ============================================ SQL workbench (profile: ops)
   # Superset SQL Lab: browse and query the lakehouse in a browser. Keycloak sign-in only.

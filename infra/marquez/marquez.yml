@@ -6,6 +6,10 @@ server:
     - type: http
       port: 5000
       httpCompliance: RFC7230_LEGACY
+      # The UI forwards the browser's cookies, and every portal on localhost sets some (SSO
+      # sessions, Superset, Grafana): past Jetty's 8 KiB default, every API call got a 431 and
+      # the UI showed "Something went wrong" with no datasets.
+      maxRequestHeaderSize: 64KiB
   adminConnectors:
     - type: http
       port: 5001
