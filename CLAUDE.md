@@ -8,6 +8,7 @@ Live Call Assist. Open work is in [docs/next-steps.md](docs/next-steps.md); read
 - `make demo`: start everything, seed, run pipelines, then `make verify`. Safe to re-run.
 - `make verify`: 56 end-to-end checks. Run after any change that touches the running stack.
 - `make test` (OPA + Python unit tests), `make lint`, `make evals`, `make contracts`.
+- Tenant teams (ADR 14): `tenants/*.yaml`, `make tenants` (validate), `make tenants-apply` (reconcile).
 - `make sql U=alice Q="..."` and `make agent U=alice T=get_customer_360 A='{...}'` run as a colleague.
 - `make urls` lists every portal (SQL workbench: Superset SQL Lab on `localhost:3004`).
   Personas: alice (contact centre), bob (complaints), carol (analyst), ops_admin (platform

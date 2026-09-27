@@ -409,6 +409,30 @@ services:
         --config retention.ms=604800000 || exit 1;
         done; echo "topics ready"
 
+  # Tenant teams (ADR 14): tenants/*.yaml -> Kafka topics, Polaris namespaces and grants, and
+  # Keycloak groups. Same checker as CI; never deletes. A one-shot that nothing depends on, so it
+  # has its own profile (`up --wait` would count its exit as a failure); `make up` runs it after
+  # the stack is healthy, and `make tenants-apply` re-runs it.
+  tenant-reconcile:
+    profiles: [tenants]
+    build: ./services/platform
+    image: open-lakehouse/platform:dev
+    restart: "no"
+    logging: *logging
+    networks: [data, edge, stream]
+    depends_on:
+      kafka-init: { condition: service_completed_successfully }
+      polaris-init: { condition: service_completed_successfully }
+      keycloak-reconcile: { condition: service_completed_successfully }
+    environment:
+      POLARIS_ROOT_CLIENT_SECRET: ${POLARIS_ROOT_CLIENT_SECRET}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    user: "0"   # writes tenant credentials into the shared secrets volume, like polaris-init
+    volumes:
+      - ./tenants:/etc/tenants:ro
+      - platform-secrets:/run/platform-secrets
+    entrypoint: ["/bin/sh", "-c", "tenant-reconcile && chmod 0644 /run/platform-secrets/*.env"]
+
   cdc-connect:
     <<: *service
     profiles: [streaming]

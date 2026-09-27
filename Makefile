@@ -14,6 +14,7 @@ secrets: ## Generate local secrets and TLS certificates (idempotent)
 
 up: secrets ## Start the platform (idempotent: safe to re-run at any time)
 	$(COMPOSE) up -d --build --wait
+	$(if $(filter streaming,$(PROFILES)),$(COMPOSE) run --rm tenant-reconcile)
 	@$(MAKE) --no-print-directory urls
 
 seed: ## Load synthetic core-banking data (no-op if already loaded)
@@ -54,6 +55,9 @@ contracts: ## Validate data contracts (ODCS schema + policy-tag agreement)
 
 tenants: ## Validate tenant onboarding files (tenants/*.yaml, ADR 14)
 	@uv run --quiet tenants/check.py
+
+tenants-apply: ## Reconcile tenant files into Kafka, Polaris and Keycloak (runs on `make up` too)
+	$(COMPOSE) run --rm tenant-reconcile
 
 chaos: ## Kill every component in turn; measure safe degradation and time-to-recover
 	@scripts/chaos.sh
@@ -101,4 +105,4 @@ down: ## Stop the platform (data is kept)
 destroy: ## Stop and DELETE all data volumes (asks first)
 	@read -p "Delete ALL lakehouse data volumes? [y/N] " a && [[ $$a == y ]] && $(COMPOSE) --profile jobs down -v
 
-.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts tenants chaos heal test lint dashboards sql agent urls down destroy
+.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts tenants tenants-apply chaos heal test lint dashboards sql agent urls down destroy
