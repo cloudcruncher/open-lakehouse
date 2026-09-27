@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-lakehouse.local/schemas/tenant/v1",
+  "title": "Tenant",
+  "description": "A team that builds on the platform from its own repo (ADR 14). The platform reconciles this file into Kafka topics, Polaris namespaces, a Keycloak group and a Dagster code location.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "kind", "name", "domain", "description", "owner", "topics", "namespaces", "codeLocation"],
+  "properties": {
+    "apiVersion": { "const": "open-lakehouse/v1" },
+    "kind": { "const": "Tenant" },
+    "name": {
+      "description": "Team id; the file must be tenants/<name>.yaml. The Keycloak group is tenant-<name>.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{2,30}$"
+    },
+    "domain": {
+      "description": "Prefix the team owns: topics start with <domain>. and namespaces with <domain>_.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]{1,19}$"
+    },
+    "description": { "type": "string", "minLength": 10, "maxLength": 300 },
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["team", "email", "repo"],
+      "properties": {
+        "team": { "type": "string", "minLength": 3 },
+        "email": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$" },
+        "repo": { "type": "string", "pattern": "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" }
+      }
+    },
+    "topics": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "partitions", "retentionHours", "description"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z][a-z0-9]*(\\.[a-z0-9_-]+)+$" },
+          "partitions": { "type": "integer", "minimum": 1, "maximum": 12 },
+          "retentionHours": {
+            "description": "Kappa replays from Kafka, so retention bounds how far back a team can reprocess.",
+            "type": "integer", "minimum": 1, "maximum": 720
+          },
+          "cleanupPolicy": { "enum": ["delete", "compact"], "default": "delete" },
+          "description": { "type": "string", "minLength": 5 }
+        }
+      }
+    },
+    "namespaces": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*_[a-z0-9_]+$" }
+    },
+    "codeLocation": {
+      "description": "The team's Dagster gRPC code server.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image", "module"],
+      "properties": {
+        "image": {
+          "description": "A pinned tag; 'latest' would let a tenant change what runs without a PR here.",
+          "type": "string",
+          "pattern": "^[a-z0-9./_-]+:(?!latest$)[A-Za-z0-9._-]+$"
+        },
+        "module": { "type": "string", "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$" }
+      }
+    }
+  }
+}

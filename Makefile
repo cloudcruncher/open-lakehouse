@@ -52,6 +52,9 @@ evals: ## Live Call Assist offline evals (understanding + scripted calls); CI ga
 contracts: ## Validate data contracts (ODCS schema + policy-tag agreement)
 	@uv run --quiet contracts/check.py
 
+tenants: ## Validate tenant onboarding files (tenants/*.yaml, ADR 14)
+	@uv run --quiet tenants/check.py
+
 chaos: ## Kill every component in turn; measure safe degradation and time-to-recover
 	@scripts/chaos.sh
 
@@ -61,10 +64,11 @@ heal: ## Run the desired-state reconciler in the foreground (Ctrl-C to stop)
 test: ## Unit tests: OPA policies + Python services
 	docker run --rm -v "$$PWD/infra/opa:/work:ro" openpolicyagent/opa:1.21.0-static test /work/policies /work/data -v
 	cd services/platform && uv run pytest -q
+	uv run --quiet --no-project --with pytest --with jsonschema --with pyyaml pytest -q tenants
 
 lint: ## Lint Python, check Rego formatting, validate alert rules and dashboards-as-code
 	cd services/platform && uvx ruff check src tests
-	uvx ruff check --line-length 120 --select E,F,B jobs/spark
+	uvx ruff check --line-length 120 --select E,F,B jobs/spark tenants
 	docker run --rm -v "$$PWD/infra/opa:/work:ro" openpolicyagent/opa:1.21.0-static fmt --list --fail /work/policies
 	docker run --rm --entrypoint promtool -v "$$PWD/infra/prometheus:/w:ro" prom/prometheus:v3.15.0 check rules /w/rules/slo.yml
 	uv run --quiet infra/grafana/build_dashboards.py >/dev/null && git diff --exit-code -- infra/grafana/dashboards
@@ -97,4 +101,4 @@ down: ## Stop the platform (data is kept)
 destroy: ## Stop and DELETE all data volumes (asks first)
 	@read -p "Delete ALL lakehouse data volumes? [y/N] " a && [[ $$a == y ]] && $(COMPOSE) --profile jobs down -v
 
-.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts chaos heal test lint dashboards sql agent urls down destroy
+.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts tenants chaos heal test lint dashboards sql agent urls down destroy

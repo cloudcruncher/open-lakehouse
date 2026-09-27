@@ -1,0 +1,35 @@
+# Markets & Payments Intelligence (ADR 14). Reconciled by the platform; do not grant by hand.
+apiVersion: open-lakehouse/v1
+kind: Tenant
+name: markets-data
+domain: markets
+description: Live market and card-authorisation streams, FX and sanctions reference data, and the gold data products built on them.
+owner:
+  team: Markets Data Engineering
+  email: markets-data@open-lakehouse.local
+  repo: https://github.com/cloudcruncher/lakehouse-markets-data
+topics:
+  - name: markets.coinbase.trades
+    partitions: 3
+    retentionHours: 168
+    description: Raw trade ticks from the Coinbase WebSocket feed.
+  - name: markets.payments.card-auths
+    partitions: 6
+    retentionHours: 168
+    description: Card authorisations in many currencies (ShadowTraffic).
+  - name: markets.payments.card-auths.dlq
+    partitions: 1
+    retentionHours: 720
+    description: Card authorisations that failed schema or parsing checks.
+  - name: markets.reference.fx-rates
+    partitions: 1
+    retentionHours: 720
+    cleanupPolicy: compact
+    description: Latest FX rate per currency pair (ECB via Frankfurter).
+namespaces:
+  - markets_bronze
+  - markets_silver
+  - markets_gold
+codeLocation:
+  image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.1.0
+  module: markets_data.definitions
