@@ -474,7 +474,7 @@ services:
   tenant-markets-data-code:
     <<: *service
     profiles: [tenant-code]   # started by `make up` after tenant-reconcile has written its credentials
-    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.3.0
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.4.0
     # Runs execute here (the default run launcher), as the tenant's own Polaris identity.
     networks: [data, meta, stream]
     depends_on:
@@ -507,7 +507,7 @@ services:
   tenant-markets-data-coinbase-feed:
     <<: *service
     profiles: [tenant-code]
-    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.3.0
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.4.0
     # Coinbase public trades (no key) to markets.coinbase.trades, keyed by product.
     networks: [data, stream]
     entrypoint: ["python3", "-m", "markets_data.coinbase"]
@@ -530,7 +530,7 @@ services:
   tenant-markets-data-trades-stream:
     <<: *service
     profiles: [tenant-code]
-    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.3.0
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.4.0
     # Kappa stream, markets.coinbase.trades to markets_bronze.trades and markets_silver.trades.
     networks: [data, stream]
     entrypoint: ["python3", "-m", "markets_data.submit", "trades_stream.py"]
@@ -550,6 +550,28 @@ services:
         volume: { subpath: tenants/markets-data }
       - tenant-markets-data-trades-stream-state:/state
     mem_limit: 1280m
+
+  tenant-markets-data-card-auths:
+    <<: *service
+    profiles: [tenant-code]
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:card-auths-0.4.0
+    # ShadowTraffic card authorisations to markets.payments.card-auths (idles without the licence).
+    networks: [data, stream]
+    environment:
+      AWS_REGION: us-east-1
+      OPENLINEAGE_URL: http://marquez:5000
+      KAFKA_BOOTSTRAP: kafka:9092
+      TENANT: markets-data
+      POLARIS_ENV_FILE: /run/tenant-secrets/polaris.env
+      SHADOWTRAFFIC_ENV_FILE: /run/tenant-secrets/shadowtraffic.env
+    volumes:
+      # Only this tenant's folder of the secrets volume, never the platform's credentials.
+      - type: volume
+        source: platform-secrets
+        target: /run/tenant-secrets
+        read_only: true
+        volume: { subpath: tenants/markets-data }
+    mem_limit: 512m
   # END tenant code servers
 
   cdc-connect:

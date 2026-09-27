@@ -34,20 +34,26 @@ secrets:
   - name: shadowtraffic
     description: ShadowTraffic licence (env file from shadowtraffic.io) for the card-authorisation generator.
 codeLocation:
-  image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.3.0
+  image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.4.0
   module: markets_data.definitions
-  deploy: true    # v0.3.0 published by lakehouse-markets-data (signed, public)
+  deploy: true    # v0.4.0 published by lakehouse-markets-data (signed, public)
 services:
   - name: coinbase-feed
     description: Coinbase public trades (no key) to markets.coinbase.trades, keyed by product.
-    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.3.0
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.4.0
     command: ["python3", "-m", "markets_data.coinbase"]
     memoryMb: 128   # measured 19 MiB at ~7 trades/s
     deploy: true
   - name: trades-stream
     description: Kappa stream, markets.coinbase.trades to markets_bronze.trades and markets_silver.trades.
-    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.3.0
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.4.0
     command: ["python3", "-m", "markets_data.submit", "trades_stream.py"]
     memoryMb: 1280   # Spark driver 768m; measured 844 MiB
     stateVolume: true   # streaming checkpoints
+    deploy: true
+  - name: card-auths
+    description: ShadowTraffic card authorisations to markets.payments.card-auths (idles without the licence).
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:card-auths-0.4.0
+    memoryMb: 512   # Java, heap capped at 65% by the image; steady ~460 MiB at ~10 records/s
+    secrets: [shadowtraffic]
     deploy: true
