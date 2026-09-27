@@ -33,7 +33,8 @@ out to `lakehouse-corebank-data` and Live Call Assist to the AI team, with their
 checks, so platform e2e shrinks to a few minutes. Platform releases get versioned tags that
 tenants pin.
 
-Step 1 is done (PR #16: `tenants/`, `make tenants`). Next is step 2, the reconciler.
+Step 1 is done (PR #16: `tenants/`, `make tenants`). Step 2 is done: `tenant-reconcile`
+(`make tenants-apply`) with three `verify` checks. Next is step 3, shared interfaces.
 
 ## Parked: the AI data engineer routine, step 4
 Done before the pivot: 1 platform health (Grafana, Dagster), 2 querying as each colleague

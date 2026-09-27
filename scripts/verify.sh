@@ -84,6 +84,18 @@ echo "▸ Data contracts (governance as code)"
 expect_contains "contracts valid (ODCS), policy tags agree with OPA, live tables match" \
   "$(uv run --quiet contracts/check.py --live 2>&1)" ": OK$"
 
+if running kafka; then
+  echo "▸ Tenant onboarding (ADR 14)"
+  topics=$("${DC[@]}" exec -T kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 \
+    --describe --topic markets.reference.fx-rates 2>&1)
+  expect_contains "tenant topic created with its declared policy (compacted FX rates)" "$topics" "cleanup.policy=compact"
+  expect_contains "re-running the reconciler changes nothing (idempotent)" \
+    "$("${DC[@]}" run --rm -T tenant-reconcile 2>&1)" "0 change(s), 0 refused"
+  expect_contains "tenant identity writes its own namespace, refused on silver" \
+    "$("${DC[@]}" run --rm -T --entrypoint tenant-reconcile tenant-reconcile --probe 2>&1)" \
+    "create in markets_bronze -> 200; create in silver -> 403"
+fi
+
 if running cdc-stream; then
   echo "▸ Streaming (CDC -> Kafka -> Spark -> Iceberg)"
   st=$("${DC[@]}" exec -T cdc-connect curl -fsS localhost:8083/connectors/corebank-cdc/status 2>&1)

@@ -21,8 +21,8 @@ from pathlib import Path
 import jsonschema
 import yaml
 
-ROOT = Path(__file__).resolve().parent.parent
-TENANTS = ROOT / "tenants"
+# Relative to this file, so the platform's reconciler can load it from a mounted copy.
+TENANTS = Path(__file__).resolve().parent
 SCHEMA = json.loads((TENANTS / "schema/tenant.schema.json").read_text())
 
 # Names the platform already uses: Polaris namespaces (bootstrap/polaris.py), Kafka topic

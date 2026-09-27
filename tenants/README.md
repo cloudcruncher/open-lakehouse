@@ -15,4 +15,10 @@ the checker's tests. A file is refused if it breaks the schema, is not named aft
 reaches outside its domain, takes a platform name (`bronze`, `corebank.*`, ...), or reuses
 another tenant's domain.
 
-Status: the registry is validated in CI; the reconciler that creates these resources comes next.
+The reconciler (`tenant-reconcile`, run by `make up` and `make tenants-apply`) makes the
+platform match these files. It validates them with the same checker first, and applies nothing
+if any file is invalid. It never deletes: a topic or namespace no tenant declares is logged as an
+orphan. Partitions only grow (a shrink is refused), and the tenant's Polaris identity
+`tenant_<name>` can manage tables in its own namespaces only. Its credentials are written to the
+platform secrets volume as `tenant_<name>.env`. Colleagues see nothing of the tenant's data until
+its contracts grant access (OPA denies by default).
