@@ -10,3 +10,7 @@ load_from:
       host: tenant-canary-code
       port: 4000
       location_name: canary
+  - grpc_server:
+      host: tenant-markets-data-code
+      port: 4000
+      location_name: markets-data

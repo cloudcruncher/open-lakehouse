@@ -53,6 +53,15 @@ initial; no brand filter). `make verify`: 66 checks. Phase 0 is complete; next i
 every 10 minutes when it changed), records them in `ops.dq_results`, and reports runless
 materializations and check results to Dagster, so silver's asset page shows the stream's writes.
 
+Phase 1 (1.1 FX, 1.2 deploy, 1.3 tenant services, 1.4 Coinbase, 1.5 Kappa stream, 1.6 card auths,
+1.7 sanctions, 1.8 gold, 1.9 replay, 1.10 dashboards). Step 1.1: the repo
+`cloudcruncher/lakehouse-markets-data` (public) lands ECB FX rates in `markets_bronze.fx_rates`
+(13,132 rows from 2025-01-01) as its own identity; its CI runs in ~30 s. Step 1.2: it publishes
+a signed `lakehouse-markets-data:0.1.0`, the platform deploys it (`deploy: true`, 2560 of 3072 MB
+tenant budget), and OPA grants `markets_gold` to every colleague and `markets_bronze` /
+`markets_silver` to platform admins only. `make verify`: 67 checks. Next is 1.3: long-running
+tenant services (producers, streams) in the tenant file, and a larger tenant memory budget.
+
 ## Parked: the AI data engineer routine, step 4
 Done before the pivot: 1 platform health (Grafana, Dagster), 2 querying as each colleague
 (and why carol is refused silver), 3 a SQL workbench (Superset) and bronze for platform

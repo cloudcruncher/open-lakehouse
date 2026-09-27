@@ -206,7 +206,20 @@ test_every_persona_reads_the_canary if {
 }
 
 test_unlisted_tenant_namespace_denied if {
-	not trino.allow with input as select("carol", "markets_gold", "trades")
+	not trino.allow with input as select("carol", "markets_silver", "trades")
+}
+
+# Markets data (ADR 14): gold data products for every colleague, raw layers for admins only.
+test_colleagues_read_markets_gold if {
+	every user in {"alice", "bob", "carol"} {
+		trino.allow with input as select(user, "markets_gold", "crypto_ohlcv_1m")
+	}
+}
+
+test_markets_raw_layers_admin_only if {
+	trino.allow with input as select("ops_admin", "markets_bronze", "fx_rates")
+	not trino.allow with input as select("bob", "markets_bronze", "fx_rates")
+	not trino.allow with input as select("alice", "markets_silver", "trades")
 }
 
 test_canary_email_masked_by_clearance if {
