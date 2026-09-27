@@ -79,6 +79,11 @@ class Tenant:
     def group(self) -> str:
         return f"tenant-{self.name}"
 
+    @property
+    def secrets_subdir(self) -> str:
+        """Inside the platform secrets volume; the tenant's code server mounts only this folder."""
+        return f"tenants/{self.name}"
+
 
 def topic_spec(t: dict[str, Any]) -> TopicSpec:
     return TopicSpec(
@@ -285,8 +290,8 @@ def reconcile_polaris(tenants: list[Tenant]) -> int:
                 pb.grant(
                     p, "lakehouse_reader", {"type": "namespace", "namespace": [ns], "privilege": privilege}
                 )
-        # Credentials land in the platform secrets volume as <ident>.env, rotated if they stop working.
-        pb.ensure_principal(p, engine)
+        # Credentials land in the secrets volume under tenants/<name>/, rotated if they stop working.
+        pb.ensure_principal(p, engine, pb.SECRETS_DIR / tenant.secrets_subdir / "polaris.env")
         log.info("polaris: %s can write %s only", engine.principal, ", ".join(tenant.namespaces))
 
     for ns in orphan_namespaces(tenants, existing, set(pb.NAMESPACES)):
@@ -334,7 +339,7 @@ def probe(tenant: Tenant) -> int:
     """Sign in as the tenant's own identity: its namespace must accept a table, a platform one must not."""
     from lakehouse_platform.bootstrap import polaris as pb
 
-    creds = pb.read_env_file(pb.SECRETS_DIR / f"{tenant.ident}.env")
+    creds = pb.read_env_file(pb.SECRETS_DIR / tenant.secrets_subdir / "polaris.env")
     p = pb.Polaris(pb.POLARIS_URL, pb.REALM)
     token = p.token(creds["POLARIS_CLIENT_ID"], creds["POLARIS_CLIENT_SECRET"])
     p.headers["Authorization"] = f"Bearer {token}"

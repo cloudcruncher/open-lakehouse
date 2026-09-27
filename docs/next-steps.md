@@ -34,7 +34,10 @@ checks, so platform e2e shrinks to a few minutes. Platform releases get versione
 tenants pin.
 
 Step 1 is done (PR #16: `tenants/`, `make tenants`). Step 2 is done: `tenant-reconcile`
-(`make tenants-apply`) with three `verify` checks. Next is step 3, shared interfaces.
+(`make tenants-apply`) with three `verify` checks. Step 3 is done: generated code servers and
+Dagster locations (`make tenants-render`, `codeLocation.deploy`), per-tenant credential folders,
+a network-join check, and the interface table in `tenants/README.md`. Still open from step 3: the
+first versioned platform release (`v0.1.0` tag) so tenants can pin a base image. Next is step 4.
 
 ## Parked: the AI data engineer routine, step 4
 Done before the pivot: 1 platform health (Grafana, Dagster), 2 querying as each colleague

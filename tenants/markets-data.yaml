@@ -33,3 +33,4 @@ namespaces:
 codeLocation:
   image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.1.0
   module: markets_data.definitions
+  deploy: false   # true once the team repo has published this image
