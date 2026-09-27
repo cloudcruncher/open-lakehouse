@@ -41,13 +41,31 @@ engineer building on its data products. It must be built the way a tenant would 
   Batch is kept for reference data that really is batch (daily FX, sanctions lists).
 - **Tenant workloads are a Compose profile** that can be switched off, because the laptop is
   already close to its memory limit.
+- **The platform proves itself with a canary tenant.** Masks, row filters and gateway
+  guarantees can't be tested without data, so this repo keeps a tiny synthetic tenant (one
+  topic, one table with tagged PII, a few rows) that goes through the real onboarding path.
+  Platform e2e becomes: services up, reconcile, canary tenant read as each colleague and
+  through the gateway. Checks about a team's data (CDC, medallion layers, WAP, freshness,
+  call-assist evals) move to the repo that owns that data.
+- **Platform releases are versioned.** The platform tags releases (images, network names,
+  the reusable workflow). Tenant repos pin a version, and also run their e2e nightly against
+  the platform's `main`, so a breaking platform change is caught within a day without
+  slowing either side's hourly releases.
+- **Phases.** 0: the onboarding path (registry, reconciler, shared interfaces, reusable
+  workflow, tenant profile, canary tenant). 1: `lakehouse-markets-data` onboards as a new
+  tenant. 2: core banking moves out to `lakehouse-corebank-data` and Live Call Assist to the
+  AI team, strangler-style: the new repo runs green on the platform before the code is
+  deleted here. Moving existing workloads last is the real test of the golden path.
 
 ## Consequences
 - The platform gains a registry and a reconciler that it must test like any other code; a
   broken tenant file must fail CI here, not at runtime.
 - Tenant repos depend on this repo's published names (networks, image tag, workflow). Those
   become a versioned interface: renaming one is a breaking change for every tenant.
-- The core-banking pipelines stay in this repo for now as the platform's reference tenant;
-  moving them out is optional later work.
+- Until phase 2, the core-banking pipelines stay here and platform e2e still runs them
+  (~10 min on a PR). After phase 2 it should drop to a few minutes, which the hourly
+  release target needs.
+- `make verify` splits by owner. Its platform checks stay here (against the canary tenant);
+  the rest move with their pipelines, so no check is lost in the move.
 - Existing guarantees still hold for tenant data: OPA per colleague, masks from contract
   tags, the audit chain for agent tool calls.
