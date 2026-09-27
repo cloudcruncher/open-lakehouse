@@ -59,10 +59,15 @@ Phase 1 (1.1 FX, 1.2 deploy, 1.3 tenant services, 1.4 Coinbase, 1.5 Kappa stream
 (13,132 rows from 2025-01-01) as its own identity; its CI runs in ~30 s. Step 1.2: it publishes
 a signed `lakehouse-markets-data:0.1.0`, the platform deploys it (`deploy: true`, 2560 of 3072 MB
 tenant budget), and OPA grants `markets_gold` to every colleague and `markets_bronze` /
-`markets_silver` to platform admins only. `make verify`: 68 checks. Step 1.3: `services:` in the
+`markets_silver` to platform admins only. Step 1.3: `services:` in the
 tenant file (rendered as `tenant-<name>-<service>`, data and stream networks only, optional
 `/state` volume), the tenant budget raised to 4608 MB for all workloads, and `/state` in the Spark
-base image (released as `v0.3.0`). Next is 1.4: the Coinbase producer in markets-data.
+base image (released as `v0.3.0`). Step 1.4: markets-data `0.2.0` adds a Coinbase producer (public
+`matches` feed, no key, keyed by product), run by the platform as the tenant service
+`coinbase-feed` (128 MB, ~19 MiB used). The lineage UI now sits behind nginx, with oauth2-proxy
+only signing in: oauth2-proxy rewrote encoded dataset namespaces into 404s, and cookies from every
+localhost portal overflowed Marquez's 8 KiB header limit. `make verify`: 69 checks. Next is 1.5:
+the Kappa stream (Kafka -> `markets_bronze.trades` -> `markets_silver.trades`) in markets-data.
 
 ## Parked: the AI data engineer routine, step 4
 Done before the pivot: 1 platform health (Grafana, Dagster), 2 querying as each colleague
