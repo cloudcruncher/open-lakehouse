@@ -35,14 +35,15 @@ These names are a versioned contract: renaming one is a breaking change for ever
 | Credentials | `/run/tenant-secrets/polaris.env` (`POLARIS_CLIENT_ID`, `POLARIS_CLIENT_SECRET`); the mount holds this tenant's folder only (`POLARIS_ENV_FILE` points at it) |
 | Other environment | `TENANT`, `KAFKA_BOOTSTRAP=kafka:9092`, `OPENLINEAGE_URL=http://marquez:5000`, `AWS_REGION` |
 | Contracts check | `uses: cloudcruncher/open-lakehouse/.github/workflows/tenant-contracts.yml@<version>` with `tenant: <name>`, `platform-ref: <version>`: ODCS schema, tables only in the tenant's namespaces, and every `pii.*` / `special_category` column masked by the platform's OPA policy (a new mask is a platform PR) |
+| Long-running services | `services:` in the tenant file (name, image, `command`, `memoryMb`, `deploy`): producers and streams run as `tenant-<name>-<service>` with the same identity and credentials mount as the code server, on `data` and `stream` only (no `meta`: no Dagster, source or audit database). `stateVolume: true` mounts a volume at `/state` that survives restarts (streaming checkpoints); the base image from `0.3.0` creates `/state` owned by `spark` |
 
 Deploying a new image is a PR here that bumps `codeLocation.image` (and sets `deploy: true` the
 first time), then `make tenants-render`: the generated `compose.yaml` block and Dagster's
 `workspace.yaml` change in the same PR, so what runs is reviewed like any other change.
 
-Memory: all deployed code servers together get `MEMORY_BUDGET_MB` (3072, two tenants at the
-default `memoryMb: 1536`) in `tenants/render.py`; `make lint` fails over it, so onboarding a third
-tenant is a decision in its PR. `make mem` shows use against limits per container. Tenant code
+Memory: all deployed tenant workloads together (code servers and services, by `memoryMb`) get
+`MEMORY_BUDGET_MB` (4608: the canary, and markets-data's code server, stream and producers) in
+`tenants/render.py`; `make lint` fails over it, so the next workload is a decision in its PR. `make mem` shows use against limits per container. Tenant code
 servers are switched off with `make up PROFILES="streaming ops"` (after `make down` if running);
 the reconciler still runs, so topics, namespaces and grants stay in place.
 

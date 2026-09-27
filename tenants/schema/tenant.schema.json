@@ -74,6 +74,34 @@
         },
         "memoryMb": { "type": "integer", "minimum": 512, "maximum": 4096, "default": 1536 }
       }
+    },
+    "services": {
+      "description": "Long-running workloads (producers, streaming jobs), run next to the code server with the same identity, on the data and Kafka networks only.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "description", "image", "memoryMb"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,30}$" },
+          "description": { "type": "string", "minLength": 10 },
+          "image": {
+            "description": "A pinned tag, as for codeLocation.image; usually the same image with another command.",
+            "type": "string",
+            "pattern": "^[a-z0-9./_-]+:(?!latest$)[A-Za-z0-9._-]+$"
+          },
+          "command": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "memoryMb": {
+            "description": "Hard limit; counts against the platform's tenant memory budget.",
+            "type": "integer", "minimum": 128, "maximum": 4096
+          },
+          "stateVolume": {
+            "description": "A volume at /state that survives restarts, e.g. for streaming checkpoints.",
+            "type": "boolean", "default": false
+          },
+          "deploy": { "type": "boolean", "default": false }
+        }
+      }
     }
   }
 }
