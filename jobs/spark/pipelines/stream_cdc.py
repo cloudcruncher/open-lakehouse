@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 from datetime import datetime, timezone
 from functools import reduce
@@ -43,13 +44,18 @@ from pyspark.sql import functions as F
 
 from common import (
     ensure_ops_tables,
+    latest_snapshot_id,
     mark_stream_drained,
+    new_run_id,
+    record_checks,
     renew_silver_lease,
+    report_to_dagster,
     spark_session,
     table_exists,
 )
 from silver import (
     apply_contract,
+    audit_checks,
     create_silver,
     ensure_quarantine,
     entities,
@@ -64,6 +70,13 @@ TRIGGER = os.environ.get("CDC_TRIGGER", "10 seconds")
 MAX_OFFSETS = int(os.environ.get("CDC_MAX_OFFSETS_PER_TRIGGER", 100_000))
 ORPHAN_GRACE = os.environ.get("CDC_ORPHAN_GRACE", "15 minutes")
 ORDER = ["customers", "accounts", "transactions", "complaints"]
+# The stream audits silver with batch silver's WAP checks on a clock, not per micro-batch
+# (they scan whole tables), and reports them to ops.dq_results and Dagster.
+AUDIT_EVERY_S = int(os.environ.get("CDC_AUDIT_EVERY_S", 600))
+
+# Rows merged and quarantined per entity since the last audit, from the batch thread.
+_since_audit: dict[str, list[int]] = {name: [0, 0] for name in ORDER}
+_since_audit_lock = threading.Lock()
 
 # Debezium payload fields -> Spark types, per entity. The JSON is the source's
 # contract with us; anything else in it is ignored.
@@ -339,6 +352,9 @@ def make_batch_fn(spark: SparkSession):
                     spark, ents[name], work.where(F.col("entity") == name), key
                 )
                 parked.append(waiting)
+                with _since_audit_lock:
+                    _since_audit[name][0] += good
+                    _since_audit[name][1] += bad
                 n_wait = waiting.count()
                 summary.append(
                     f"{name}={good}"
@@ -385,6 +401,44 @@ def drained(progress: dict) -> bool:
     return bool(progress.get("sources"))
 
 
+def audit_silver(spark: SparkSession, first: bool) -> bool:
+    """Run batch silver's WAP checks on each table the stream changed, then record and report
+    them. The first audit after a start covers every table, so Dagster never shows a stale
+    result from before this stream owned silver. Returns False while a table doesn't exist yet
+    (a fresh stack), so the caller keeps asking for a full audit."""
+    with _since_audit_lock:
+        counts = {name: tuple(v) for name, v in _since_audit.items()}
+        for v in _since_audit.values():
+            v[0] = v[1] = 0
+    run_id = new_run_id()
+    complete = True
+    for e in entities():
+        good, bad = counts[e.name]
+        target = f"silver.{e.name}"
+        if not table_exists(spark, target):
+            complete = False
+            continue
+        if not (first or good or bad):
+            continue
+        rate = bad / (good + bad) if good + bad else 0.0
+        checks = audit_checks(e, rate, False)(spark.table(target))
+        record_checks(spark, run_id, target, checks)
+        report_to_dagster(
+            target,
+            checks,
+            {
+                "writer": STREAM_ID,
+                "rows_merged_since_last_audit": good,
+                "rows_quarantined_since_last_audit": bad,
+                "iceberg_snapshot_id": str(latest_snapshot_id(spark, target)),
+                "run_id": run_id,
+            },
+        )
+        failed = [c.name for c in checks if not c.passed]
+        print(f"[cdc] audit {target}: {'FAILED ' + ', '.join(failed) if failed else 'ok'}", flush=True)
+    return complete
+
+
 def main() -> None:
     start_http_server(int(os.environ.get("METRICS_PORT", 9108)))
     spark = spark_session("cdc-stream")
@@ -420,6 +474,8 @@ def main() -> None:
     last_lease = time.monotonic()
     last_drain = 0.0
     last_report = 0.0
+    last_audit = 0.0
+    full_audit = True  # until every silver table has been audited once since this start
     while query.isActive:
         # Renew on a clock, not per batch: an idle stream still owns silver.
         if time.monotonic() - last_lease > 60:
@@ -434,6 +490,12 @@ def main() -> None:
                 # everything in Kafka at its start is now in silver.
                 mark_stream_drained(spark, ts.timestamp())
                 last_drain = ts.timestamp()
+        # First audit once the stream has caught up (retried each minute until every table
+        # exists), then on a clock.
+        wait = 60 if full_audit else AUDIT_EVERY_S
+        if last_drain and time.monotonic() - last_audit > wait:
+            full_audit = not audit_silver(spark, first=full_audit)
+            last_audit = time.monotonic()
         if time.monotonic() - last_report > 60:
             print(f"[cdc] caught up as of {int(last_drain)} ({query.status['message']})", flush=True)
             last_report = time.monotonic()

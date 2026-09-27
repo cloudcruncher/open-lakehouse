@@ -48,9 +48,10 @@ its namespace, 403 on `silver` and `markets_bronze`); memory after: 7.0 GiB used
 idles at ~190 MiB and peaks at ~850 of 1024 MiB. Step 6b is done: `contracts/canary.odcs.yaml`
 (name `pii.name`, email `pii.contact`), `canary_data` readable by every persona, OPA tests, and five
 `verify` checks (the canary writes as itself; bob sees the email, alice masked, carol NULL and an
-initial; no brand filter). `make verify`: 65 checks. Phase 0 is complete; next is phase 1
-(`lakehouse-markets-data`). Open: the CDC stream's silver writes are invisible to Dagster (silver
-shows a stale failed run from 25 Sep); report them as materializations and check results.
+initial; no brand filter). `make verify`: 66 checks. Phase 0 is complete; next is phase 1
+(`lakehouse-markets-data`). The CDC stream now audits silver with the WAP checks (on start, then
+every 10 minutes when it changed), records them in `ops.dq_results`, and reports runless
+materializations and check results to Dagster, so silver's asset page shows the stream's writes.
 
 ## Parked: the AI data engineer routine, step 4
 Done before the pivot: 1 platform health (Grafana, Dagster), 2 querying as each colleague

@@ -519,7 +519,7 @@ services:
     profiles: [streaming]
     build: ./jobs/spark
     image: open-lakehouse/spark:dev
-    networks: [data, stream]
+    networks: [data, stream, meta]   # meta: report silver to Dagster
     depends_on:
       polaris-init: { condition: service_completed_successfully }
       kafka-init: { condition: service_completed_successfully }
@@ -530,6 +530,8 @@ services:
     environment:
       AWS_REGION: us-east-1
       MAX_ATTEMPTS: "1"            # long-running: the restart policy + healer own restarts
+      # Silver's writes and check results reach Dagster's asset page (runless reports).
+      DAGSTER_URL: http://dagster-webserver:3000
       SPARK_DRIVER_MEMORY: 1200m
       SPARK_CORES: "2"
       SPARK_SHUFFLE_PARTITIONS: "4"

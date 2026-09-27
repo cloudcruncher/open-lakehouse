@@ -171,6 +171,16 @@ print(len(g.get_all_asset_keys()), len(g.asset_check_keys), len(list(defs.schedu
   expect_contains "Dagster: 13 assets, 19 WAP checks, 3 schedules" "$out" "^13 19 3$"
   out=$("${DC[@]}" exec -T dagster-code python3 - < jobs/spark/orchestration/tests/lease_race.py 2>&1 | tail -1)
   expect_contains "Dagster: scheduled run skips silver the stream owns; manual backfill refused" "$out" "^OK$"
+  if running cdc-stream; then
+    # The stream writes silver outside Dagster; it reports its writes and WAP checks (runless).
+    out=$("${DC[@]}" exec -T dagster-webserver python3 -c '
+import json, urllib.request as u
+q = "{assetNodes(group:{groupName:\"silver\",repositoryName:\"__repository__\",repositoryLocationName:\"lakehouse\"}){assetChecksOrError{... on AssetChecks{checks{executionForLatestMaterialization{status}}}}}}"
+r = json.load(u.urlopen(u.Request("http://localhost:3000/graphql", json.dumps({"query": q}).encode(), {"Content-Type": "application/json"})))
+s = [(c["executionForLatestMaterialization"] or {}).get("status") for n in r["data"]["assetNodes"] for c in n["assetChecksOrError"]["checks"]]
+print(len(s), "SUCCEEDED" if set(s) == {"SUCCEEDED"} else s)' 2>&1 | tail -1)
+    expect_contains "Dagster: silver's stream writes and 16 WAP checks reported, all passing" "$out" "^16 SUCCEEDED$"
+  fi
   out=$("${DC[@]}" exec -T marquez curl -fsS "localhost:5000/api/v1/lineage?nodeId=dataset:s3://lakehouse:warehouse/gold/customer_360&depth=6" 2>&1)
   expect_contains "lineage: gold.customer_360 traces back to silver (OpenLineage)" "$out" "warehouse/silver/customers"
 fi
