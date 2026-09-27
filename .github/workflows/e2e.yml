@@ -3,10 +3,22 @@
 # If this is green, the README's claims are true on a machine that isn't mine.
 name: e2e
 
+# Docs-only changes skip it. Markdown under services/ is runtime data (procedure cards,
+# the labelling guide), so it is re-included.
 on:
   push:
     branches: [main]
+    paths:
+      - "**"
+      - "!docs/**"
+      - "!**/*.md"
+      - "services/**"
   pull_request:
+    paths:
+      - "**"
+      - "!docs/**"
+      - "!**/*.md"
+      - "services/**"
   workflow_dispatch:
   schedule:
     - cron: "17 5 * * 1"   # weekly: catch upstream image or dependency drift
@@ -30,15 +42,22 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: "**/uv.lock"
-      - name: Make room for the images
+      - name: Make room for the images (in the background; deleting took ~4.5 min inline)
         run: |
-          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android /opt/hostedtoolcache/CodeQL
           df -h / && free -g
+          sudo nohup rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
+            /opt/hostedtoolcache/CodeQL >/dev/null 2>&1 &
       - name: Platform from zero -> seed -> pipelines -> verify
         run: make demo
+      - name: Disk used by the platform
+        if: always()
+        run: df -h / && docker system df
+      # Resilience is proven on every merge to main and weekly; PRs skip it for speed.
       - name: Chaos sample (policy, storage, stream)
+        if: github.event_name != 'pull_request'
         run: scripts/chaos.sh opa rustfs cdc-stream
       - name: Verify again after chaos
+        if: github.event_name != 'pull_request'
         run: make verify
       - name: Collect state on failure
         if: failure()

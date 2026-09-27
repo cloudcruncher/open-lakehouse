@@ -15,6 +15,8 @@ Live Call Assist. Open work is in [docs/next-steps.md](docs/next-steps.md); read
 
 ## Conventions
 - Python via uv only. Work on a branch, open a PR; CI (`ci`, `e2e`) must be green before merging.
+  Docs-only PRs skip `e2e`; PRs skip its chaos sample (it runs on `main` and weekly). Keep CI
+  fast: the target is a release an hour, here and in tenant repos.
 - Grafana dashboards are generated: edit `infra/grafana/build_dashboards.py`, run `make dashboards`,
   commit the JSON. `make lint` fails if committed JSON differs from the builder output, so it
   reports a failure until regenerated dashboards are committed.
