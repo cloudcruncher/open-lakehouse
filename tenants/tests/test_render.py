@@ -71,3 +71,18 @@ def test_code_server_mounts_only_its_own_secrets():
     assert not any(
         "platform-secrets:" in v for v in svc["volumes"] if isinstance(v, str)
     )
+
+
+def named(name: str, **loc):
+    t = deployed(**loc)
+    t["name"] = name
+    return t
+
+
+def test_tenants_within_the_memory_budget_pass():
+    assert render.over_budget([named("a"), named("b")]) is None  # 2 x 1536 = 3072
+
+
+def test_tenants_over_the_memory_budget_fail():
+    problem = render.over_budget([named("a"), named("b"), named("c", memoryMb=512)])
+    assert "3584 MB (a 1536, b 1536, c 512), over the 3072 MB budget" in problem
