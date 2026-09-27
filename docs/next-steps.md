@@ -26,6 +26,14 @@ each step before the next**. Phase 0 makes onboarding a single PR here:
    per tenant in `services/orchestrator/workspace.yaml`.
 4. A reusable GitHub workflow that runs the contract/policy check on a tenant's contracts.
 5. A tenant Compose profile, with memory measured before and after.
+6. A canary tenant (tiny synthetic data) and platform checks that run against it.
+
+Then phase 1: `lakehouse-markets-data` onboards as a new tenant. Phase 2: core banking moves
+out to `lakehouse-corebank-data` and Live Call Assist to the AI team, with their `verify`
+checks, so platform e2e shrinks to a few minutes. Platform releases get versioned tags that
+tenants pin.
+
+Step 1 is done (PR #16: `tenants/`, `make tenants`). Next is step 2, the reconciler.
 
 ## Parked: the AI data engineer routine, step 4
 Done before the pivot: 1 platform health (Grafana, Dagster), 2 querying as each colleague
