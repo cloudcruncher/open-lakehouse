@@ -38,7 +38,11 @@ Step 1 is done (PR #16: `tenants/`, `make tenants`). Step 2 is done: `tenant-rec
 Dagster locations (`make tenants-render`, `codeLocation.deploy`), per-tenant credential folders,
 a network-join check, and the interface table in `tenants/README.md`; `v0.1.0` is tagged and its
 images are public. Step 4 is done: `.github/workflows/tenant-contracts.yml` (`workflow_call`) runs
-`contracts/check.py --tenant` on a tenant repo's contracts; it ships in `v0.2.0`. Next is step 5.
+`contracts/check.py --tenant` on a tenant repo's contracts, released as `v0.2.0`. Step 5 is done:
+`tenants` in `PROFILES` switches tenant code servers on/off, a 3072 MB budget for them fails
+`make lint`, and `make mem`. Baseline with no tenant: 6.7 of 11.7 GiB used, limits add up to
+18.5 GiB; `rustfs` (98%) and `cdc-connect` (96%) sit at their limits. The "after" figure comes
+with the canary tenant. Next is step 6.
 
 ## Parked: the AI data engineer routine, step 4
 Done before the pivot: 1 platform health (Grafana, Dagster), 2 querying as each colleague

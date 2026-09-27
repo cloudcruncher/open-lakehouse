@@ -1,7 +1,9 @@
 SHELL := /bin/bash
-# Profiles to run. Default: everything (core + streaming + ops). Core only: `make up PROFILES=`.
-PROFILES ?= streaming ops
-COMPOSE := docker compose $(addprefix --profile ,$(PROFILES))
+# Profiles to run. Default: everything (core + streaming + ops + tenants). Core only:
+# `make up PROFILES=`. Without tenant code servers (ADR 14, memory): `make up PROFILES="streaming ops"`.
+PROFILES ?= streaming ops tenants
+# `tenants` is a switch for `make up`, not a Compose profile passed on every command.
+COMPOSE := docker compose $(addprefix --profile ,$(filter-out tenants,$(PROFILES)))
 JOBS := $(COMPOSE) --profile jobs
 
 .DEFAULT_GOAL := help
@@ -15,7 +17,7 @@ secrets: ## Generate local secrets and TLS certificates (idempotent)
 up: secrets ## Start the platform (idempotent: safe to re-run at any time)
 	$(COMPOSE) up -d --build --wait
 	$(if $(filter streaming,$(PROFILES)),$(COMPOSE) run --rm tenant-reconcile)
-	$(if $(filter ops,$(PROFILES)),$(COMPOSE) --profile tenant-code up -d --wait)
+	$(if $(and $(filter tenants,$(PROFILES)),$(filter ops,$(PROFILES))),$(COMPOSE) --profile tenant-code up -d --wait)
 	@$(MAKE) --no-print-directory urls
 
 seed: ## Load synthetic core-banking data (no-op if already loaded)
@@ -59,6 +61,9 @@ tenants: ## Validate tenant onboarding files (tenants/*.yaml, ADR 14)
 
 tenants-apply: ## Reconcile tenant files into Kafka, Polaris and Keycloak (runs on `make up` too)
 	$(COMPOSE) run --rm tenant-reconcile
+
+mem: ## Memory per container against its limit, and the total against Docker's (ADR 14)
+	@scripts/mem.sh
 
 tenants-render: ## Regenerate tenant code servers (compose.yaml) and Dagster's workspace.yaml
 	@uv run --quiet tenants/render.py
@@ -105,9 +110,9 @@ urls: ## Where everything is (all bound to localhost only)
 	@echo "  Demo password: grep DEMO_USER_PASSWORD .env"
 
 down: ## Stop the platform (data is kept)
-	$(COMPOSE) --profile jobs down
+	$(COMPOSE) --profile jobs --profile tenant-code down
 
 destroy: ## Stop and DELETE all data volumes (asks first)
-	@read -p "Delete ALL lakehouse data volumes? [y/N] " a && [[ $$a == y ]] && $(COMPOSE) --profile jobs down -v
+	@read -p "Delete ALL lakehouse data volumes? [y/N] " a && [[ $$a == y ]] && $(COMPOSE) --profile jobs --profile tenant-code down -v
 
-.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts tenants tenants-apply tenants-render chaos heal test lint dashboards sql agent urls down destroy
+.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts tenants tenants-apply tenants-render mem chaos heal test lint dashboards sql agent urls down destroy

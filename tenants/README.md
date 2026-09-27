@@ -40,6 +40,12 @@ Deploying a new image is a PR here that bumps `codeLocation.image` (and sets `de
 first time), then `make tenants-render`: the generated `compose.yaml` block and Dagster's
 `workspace.yaml` change in the same PR, so what runs is reviewed like any other change.
 
+Memory: all deployed code servers together get `MEMORY_BUDGET_MB` (3072, two tenants at the
+default `memoryMb: 1536`) in `tenants/render.py`; `make lint` fails over it, so onboarding a third
+tenant is a decision in its PR. `make mem` shows use against limits per container. Tenant code
+servers are switched off with `make up PROFILES="streaming ops"` (after `make down` if running);
+the reconciler still runs, so topics, namespaces and grants stay in place.
+
 Known laptop compromise: tenant code servers share the Dagster instance database with the
 platform (runs execute in the code server). In production each tenant gets its own run launcher
 and database credentials.
