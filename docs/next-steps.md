@@ -12,12 +12,26 @@ Then fixes: Superset asks to authorize again after a 30-minute idle (PR #12), an
 chain stays linear when tool calls land together (PR #13; the local audit log was reset
 because the old bug had forked it). `make verify`: 56/56. API spend that day: about $0.40.
 
-## Resume here: the AI data engineer routine, step 4
-Work is paused mid-routine: an AI data engineer's day on this stack, **one small step per
-turn, the repo owner checks each step before the next**. Done: 1 platform health (Grafana,
-Dagster), 2 querying as each colleague (and why carol is refused silver), 3 a SQL
-workbench (Superset) and bronze for platform admins. Next is **step 4, a change request**:
-core banking adds a column and it is carried end to end, one step per turn:
+## Resume here: phase 0, onboarding tenant teams
+From 27 Sep the stack is used as a platform for teams in their own repos
+([ADR 14](adr/0014-platform-and-tenant-teams-in-separate-repos.md)): `lakehouse-markets-data`
+(data engineering, "Markets & Payments Intelligence"), `lakehouse-ai-desk` (AI engineering)
+and `lakehouse-risk-signals` (hybrid). Still **one small step per turn, the repo owner checks
+each step before the next**. Phase 0 makes onboarding a single PR here:
+
+1. The tenant file: a schema for `tenants/<team>.yaml` (owner, Keycloak group, Kafka topics,
+   Polaris namespaces, code-location image) and a test that a bad file fails `make test`.
+2. The reconciler: topics, namespaces and grants, and a Keycloak group, from the tenant files.
+3. Shared interfaces: external networks, the Spark base image tag, and a Dagster code location
+   per tenant in `services/orchestrator/workspace.yaml`.
+4. A reusable GitHub workflow that runs the contract/policy check on a tenant's contracts.
+5. A tenant Compose profile, with memory measured before and after.
+
+## Parked: the AI data engineer routine, step 4
+Done before the pivot: 1 platform health (Grafana, Dagster), 2 querying as each colleague
+(and why carol is refused silver), 3 a SQL workbench (Superset) and bronze for platform
+admins. Step 4 was **a change request**: core banking adds a column and it is carried end to
+end, one step per turn:
 
 1. The source change: add a column to `core.customers`, for example `secondary_phone`
    (personal data, so it exercises the governance path). Source DDL:
