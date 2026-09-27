@@ -31,6 +31,13 @@ namespaces:
   - markets_silver
   - markets_gold
 codeLocation:
-  image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.1.0
+  image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.2.0
   module: markets_data.definitions
-  deploy: true    # v0.1.0 published by lakehouse-markets-data (signed, public)
+  deploy: true    # v0.2.0 published by lakehouse-markets-data (signed, public)
+services:
+  - name: coinbase-feed
+    description: Coinbase public trades (no key) to markets.coinbase.trades, keyed by product.
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.2.0
+    command: ["python3", "-m", "markets_data.coinbase"]
+    memoryMb: 128   # measured 19 MiB at ~7 trades/s
+    deploy: true

@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import render  # noqa: E402
 
 GOOD = yaml.safe_load((render.check.TENANTS / "markets-data.yaml").read_text())
+GOOD.pop("services", None)  # each test declares the services it needs
 
 
 def deployed(**loc):
@@ -50,7 +51,7 @@ def test_deployed_tenant_gets_a_location_and_a_code_server():
         "location_name": "markets-data",
     }
     svc = code_server(t)
-    assert svc["image"] == "ghcr.io/cloudcruncher/lakehouse-markets-data:0.1.0"
+    assert svc["image"] == GOOD["codeLocation"]["image"]
     assert svc["entrypoint"][-1] == "markets_data.definitions"
     assert svc["profiles"] == ["tenant-code"]
     assert svc["mem_limit"] == "1024m"
