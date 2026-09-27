@@ -6,3 +6,7 @@ load_from:
       host: dagster-code
       port: 4000
       location_name: lakehouse
+  - grpc_server:
+      host: tenant-canary-code
+      port: 4000
+      location_name: canary

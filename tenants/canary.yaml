@@ -1,0 +1,25 @@
+# The platform's own canary tenant (ADR 14): tiny synthetic data that goes through the real
+# onboarding path, so platform checks (masks, grants, credential isolation) have data to test.
+# Its image is the platform's own build, so every platform PR's e2e runs the canary on it.
+apiVersion: open-lakehouse/v1
+kind: Tenant
+name: canary
+domain: canary
+description: Synthetic canary tenant the platform tests itself against. Five rows, one PII column.
+owner:
+  team: data-platform
+  email: data-platform@open-lakehouse.local
+  repo: https://github.com/cloudcruncher/open-lakehouse
+topics:
+  - name: canary.events
+    partitions: 1
+    retentionHours: 24
+    cleanupPolicy: delete
+    description: Reserved for the canary's streaming checks.
+namespaces:
+  - canary_data
+codeLocation:
+  image: open-lakehouse/spark:dev
+  module: canary_tenant.definitions
+  deploy: true
+  memoryMb: 1024

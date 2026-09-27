@@ -42,7 +42,11 @@ images are public. Step 4 is done: `.github/workflows/tenant-contracts.yml` (`wo
 `tenants` in `PROFILES` switches tenant code servers on/off, a 3072 MB budget for them fails
 `make lint`, and `make mem`. Baseline with no tenant: 6.7 of 11.7 GiB used, limits add up to
 18.5 GiB; `rustfs` (98%) and `cdc-connect` (96%) sit at their limits. The "after" figure comes
-with the canary tenant. Next is step 6.
+with the canary tenant. Step 6a is done: the canary tenant (`tenants/canary.yaml`, `make canary`)
+runs in its generated code server and writes `canary_data.people` as its own principal (200 on
+its namespace, 403 on `silver` and `markets_bronze`); memory after: 7.0 GiB used, the canary
+idles at ~190 MiB and peaks at ~850 of 1024 MiB. Next is 6b: a contract and OPA mask for the
+canary's email column, read access for colleagues, and verify/e2e checks against it.
 
 ## Parked: the AI data engineer routine, step 4
 Done before the pivot: 1 platform health (Grafana, Dagster), 2 querying as each colleague

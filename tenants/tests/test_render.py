@@ -34,7 +34,8 @@ def test_committed_files_are_current():
 
 
 def test_undeployed_tenant_gets_no_code_server():
-    assert render.deployed() == []  # markets-data has no image yet
+    # markets-data has no image yet; the canary runs on the platform's own build.
+    assert [t["name"] for t in render.deployed()] == ["canary"]
     ws = yaml.safe_load(render.render_workspace([]))
     assert [loc["grpc_server"]["location_name"] for loc in ws["load_from"]] == [
         "lakehouse"
