@@ -171,6 +171,13 @@ print(len(g.get_all_asset_keys()), len(g.asset_check_keys), len(list(defs.schedu
   expect_contains "Dagster: 13 assets, 19 WAP checks, 3 schedules" "$out" "^13 19 3$"
   out=$("${DC[@]}" exec -T dagster-code python3 - < jobs/spark/orchestration/tests/lease_race.py 2>&1 | tail -1)
   expect_contains "Dagster: scheduled run skips silver the stream owns; manual backfill refused" "$out" "^OK$"
+  # Tenant code servers are generated from tenants/*.yaml (ADR 14); each must load in Dagster.
+  out=$("${DC[@]}" exec -T dagster-webserver python3 -c '
+import json, urllib.request as u
+q = "{workspaceOrError{... on Workspace{locationEntries{name locationOrLoadError{__typename}}}}}"
+r = json.load(u.urlopen(u.Request("http://localhost:3000/graphql", json.dumps({"query": q}).encode(), {"Content-Type": "application/json"})))
+print(",".join(sorted(e["name"] for e in r["data"]["workspaceOrError"]["locationEntries"] if e["locationOrLoadError"]["__typename"] == "RepositoryLocation")))' 2>&1 | tail -1)
+  expect_contains "Dagster: platform and tenant code locations load (canary, markets-data)" "$out" "^canary,lakehouse,markets-data$"
   if running cdc-stream; then
     # The stream writes silver outside Dagster; it reports its writes and WAP checks (runless).
     out=$("${DC[@]}" exec -T dagster-webserver python3 -c '

@@ -35,7 +35,8 @@
         "schemas": [
           "gold",
           "silver",
-          "canary_data"
+          "canary_data",
+          "markets_gold"
         ],
         "pii": "partial",
         "special_category": true
@@ -44,7 +45,8 @@
         "schemas": [
           "gold",
           "silver",
-          "canary_data"
+          "canary_data",
+          "markets_gold"
         ],
         "pii": "full",
         "special_category": true
@@ -52,7 +54,8 @@
       "analyst": {
         "schemas": [
           "gold",
-          "canary_data"
+          "canary_data",
+          "markets_gold"
         ],
         "pii": "none",
         "special_category": false
@@ -63,7 +66,10 @@
           "silver",
           "gold",
           "ops",
-          "canary_data"
+          "canary_data",
+          "markets_gold",
+          "markets_bronze",
+          "markets_silver"
         ],
         "pii": "none",
         "special_category": false,
