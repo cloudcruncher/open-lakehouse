@@ -148,3 +148,8 @@ def test_undeployed_service_is_not_rendered():
     t["services"] = [dict(STREAM, deploy=False)]
     compose = render.render_compose(render.COMPOSE.read_text(), [t])
     assert "tenant-markets-data-trades-stream" not in compose
+
+
+def test_a_service_is_told_where_its_secrets_are():
+    svc, _ = rendered_workload(dict(STREAM, secrets=["shadowtraffic"]))
+    assert svc["environment"]["SHADOWTRAFFIC_ENV_FILE"] == "/run/tenant-secrets/shadowtraffic.env"

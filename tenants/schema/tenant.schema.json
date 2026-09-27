@@ -99,7 +99,24 @@
             "description": "A volume at /state that survives restarts, e.g. for streaming checkpoints.",
             "type": "boolean", "default": false
           },
+          "secrets": {
+            "description": "Names from the tenant's `secrets`; each is rendered as <NAME>_ENV_FILE pointing at /run/tenant-secrets/<name>.env.",
+            "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,30}$" }
+          },
           "deploy": { "type": "boolean", "default": false }
+        }
+      }
+    },
+    "secrets": {
+      "description": "Secret slots the team fills itself (`make tenant-secret`): the values never enter git; the platform stores them in the tenant's own folder of its secrets volume.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "description"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,30}$" },
+          "description": { "type": "string", "minLength": 10 }
         }
       }
     }
