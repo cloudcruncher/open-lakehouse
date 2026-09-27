@@ -66,8 +66,12 @@ base image (released as `v0.3.0`). Step 1.4: markets-data `0.2.0` adds a Coinbas
 `matches` feed, no key, keyed by product), run by the platform as the tenant service
 `coinbase-feed` (128 MB, ~19 MiB used). The lineage UI now sits behind nginx, with oauth2-proxy
 only signing in: oauth2-proxy rewrote encoded dataset namespaces into 404s, and cookies from every
-localhost portal overflowed Marquez's 8 KiB header limit. `make verify`: 69 checks. Next is 1.5:
-the Kappa stream (Kafka -> `markets_bronze.trades` -> `markets_silver.trades`) in markets-data.
+localhost portal overflowed Marquez's 8 KiB header limit. `make verify`: 69 checks. Step 1.5:
+markets-data `0.3.0` adds the Kappa stream, run as the tenant service `trades-stream` (checkpoints
+on its `/state` volume, 1280 MB): bronze appends every record, silver MERGEs each trade once and
+sends rule failures to `markets_bronze.trades_rejects`. With no checkpoint, bronze resumes after
+the offsets it holds (proven on first deploy: 0 duplicates). Tenant workloads: 3968 of 4608 MB.
+Next is 1.6: ShadowTraffic card authorisations (needs the trial licence, `make tenant-secret`).
 
 ## Parked: the AI data engineer routine, step 4
 Done before the pivot: 1 platform health (Grafana, Dagster), 2 querying as each colleague
