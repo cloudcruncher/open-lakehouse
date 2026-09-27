@@ -71,7 +71,41 @@ markets-data `0.3.0` adds the Kappa stream, run as the tenant service `trades-st
 on its `/state` volume, 1280 MB): bronze appends every record, silver MERGEs each trade once and
 sends rule failures to `markets_bronze.trades_rejects`. With no checkpoint, bronze resumes after
 the offsets it holds (proven on first deploy: 0 duplicates). Tenant workloads: 3968 of 4608 MB.
-Next is 1.6: ShadowTraffic card authorisations (needs the trial licence, `make tenant-secret`).
+Step 1.6 (parts 1 and 2): tenant files declare secret slots (`secrets:`), which the team
+fills itself with `make tenant-secret` (never in git; stored in the tenant's own folder of the
+secrets volume); markets-data `0.4.0` adds a ShadowTraffic card-authorisation generator, run as
+the service `card-auths` with the `shadowtraffic` licence (idles without it, as in CI). Tenant
+workloads: 4480 of 4608 MB. Next is 1.6 part 3: the card-auth stream to bronze and silver, the
+DLQ, and EUR via `fx_rates`; it needs budget (see the backlog below).
+
+### Backlog to pick up (saved 27 Sep 2026, in order)
+1. **Budget for 1.6 part 3.** The card-auth stream (Spark, ~1280 MB) doesn't fit 4608 MB. Proposal:
+   trim markets-data's code server to 1024 MB (uses ~184 MiB) and raise `MEMORY_BUDGET_MB`
+   moderately (Docker VM has ~2.5 GiB free; `make mem` first). Or run both streams in one job.
+2. **1.6 part 3** (markets-data, then a platform service): `markets.payments.card-auths` ->
+   `markets_bronze.card_auths` (append) -> `markets_silver.card_auths` (typed, MERGE by
+   `auth_id`), bad records to `markets.payments.card-auths.dlq` and a rejects table, amounts in
+   EUR via the latest `fx_rates` on or before the auth date. Contract; `make spark-check` cases.
+3. **1.7** sanctions (OpenSanctions / HMT) daily batch; screen card-auth merchants.
+4. **1.8** gold: `crypto_ohlcv_1m`, `card_auth_daily`, `sanctions_hits` (contracts, checks, freshness).
+5. **1.9** Kappa replay demo (`trades_v2`, compare, swap a view). **1.10** dashboards (Superset
+   on gold, Grafana stream lag and freshness).
+6. Then `lakehouse-ai-desk`, `lakehouse-risk-signals`, phase 2 (corebank out of this repo).
+
+Smaller, when convenient:
+- **The ShadowTraffic trial expires 27 Oct 2026**: `make tenant-secret TENANT=markets-data
+  NAME=shadowtraffic FILE=<renewed licence.env>` (the generator idles until then).
+- Lineage: Marquez shows no Kafka -> bronze/silver edges for the trades stream (OpenLineage
+  doesn't see streaming `toTable` or a MERGE from a batch view); dataset clutter (Iceberg
+  metadata tables such as `*.snapshots`, the same tables again under `s3://lakehouse`, the empty
+  `default` namespace, the canary under `file`).
+- The platform's CDC stream likely logs OpenLineage's Iceberg metrics `ClassCastException` every
+  batch: add `spark.openlineage.vendors.iceberg.metricsReporterDisabled=true` in
+  `jobs/spark/pipelines/common.py` (as markets-data did).
+- Kafka has no authentication or ACLs: any container on the `stream` network can write any topic.
+  Per-tenant Kafka principals would match what Polaris already does.
+- `make verify` checks tenant services are running, not that they produce: data checks belong in
+  the tenant repos (a smoke test there, with the licence as an Actions secret if ever needed).
 
 ## Parked: the AI data engineer routine, step 4
 Done before the pivot: 1 platform health (Grafana, Dagster), 2 querying as each colleague
