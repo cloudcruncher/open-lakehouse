@@ -79,10 +79,71 @@ def named(name: str, **loc):
     return t
 
 
+STREAM = {
+    "name": "trades-stream",
+    "description": "Kafka to markets_bronze.trades, continuously.",
+    "image": "ghcr.io/cloudcruncher/lakehouse-markets-data:0.2.0",
+    "command": ["python3", "-m", "markets_data.streams.trades"],
+    "memoryMb": 1280,
+    "stateVolume": True,
+    "deploy": True,
+}
+
+
 def test_tenants_within_the_memory_budget_pass():
-    assert render.over_budget([named("a"), named("b")]) is None  # 2 x 1536 = 3072
+    a = named("a")
+    a["services"] = [STREAM]
+    assert render.over_budget([a, named("b")]) is None  # 1536 + 1280 + 1536 = 4352
 
 
 def test_tenants_over_the_memory_budget_fail():
-    problem = render.over_budget([named("a"), named("b"), named("c", memoryMb=512)])
-    assert "3584 MB (a 1536, b 1536, c 512), over the 3072 MB budget" in problem
+    a = named("a")
+    a["services"] = [dict(STREAM, memoryMb=512)]
+    problem = render.over_budget([a, named("b"), named("c")])
+    assert (
+        "5120 MB (a code 1536, a trades-stream 512, b code 1536, c code 1536), over the 4608 MB budget"
+        in problem
+    )
+
+
+def rendered_workload(s: dict) -> tuple[dict, str]:
+    t = deployed()
+    t["services"] = [s]
+    compose = render.render_compose(render.COMPOSE.read_text(), [t])
+    block = render.workload(t, s).replace("    <<: *service\n", "")
+    return yaml.safe_load(block)[f"tenant-markets-data-{s['name']}"], compose
+
+
+def test_service_runs_its_command_as_the_tenant_on_data_and_kafka_only():
+    svc, _ = rendered_workload(STREAM)
+    assert svc["entrypoint"] == ["python3", "-m", "markets_data.streams.trades"]
+    assert (
+        svc["command"] == []
+    )  # the image's default (the code server) must not be appended
+    assert svc["networks"] == [
+        "data",
+        "stream",
+    ]  # no meta: no Dagster, source or audit database
+    assert svc["environment"]["POLARIS_ENV_FILE"] == "/run/tenant-secrets/polaris.env"
+    assert svc["mem_limit"] == "1280m"
+    assert {
+        "type": "volume",
+        "source": "platform-secrets",
+        "target": "/run/tenant-secrets",
+        "read_only": True,
+        "volume": {"subpath": "tenants/markets-data"},
+    } in svc["volumes"]
+
+
+def test_service_state_volume_is_declared_and_mounted():
+    svc, compose = rendered_workload(STREAM)
+    assert "tenant-markets-data-trades-stream-state:/state" in svc["volumes"]
+    volumes = compose.split(render.BEGIN_VOLUMES, 1)[1].split(render.END_VOLUMES, 1)[0]
+    assert volumes == "  tenant-markets-data-trades-stream-state:\n"
+
+
+def test_undeployed_service_is_not_rendered():
+    t = deployed()
+    t["services"] = [dict(STREAM, deploy=False)]
+    compose = render.render_compose(render.COMPOSE.read_text(), [t])
+    assert "tenant-markets-data-trades-stream" not in compose

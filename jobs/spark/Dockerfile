@@ -33,7 +33,9 @@ COPY requirements.txt /tmp/requirements.txt
 RUN uv pip install --system --break-system-packages --require-hashes --no-cache -r /tmp/requirements.txt
 
 # Streaming checkpoints live on a volume; pre-create it so the volume is owned by spark.
-RUN mkdir -p /checkpoints /opt/dagster/home /opt/dagster/logs && chown spark:spark /checkpoints /opt/dagster/home /opt/dagster/logs
+# /state is the same for tenant services built on this image (ADR 14, `stateVolume: true`).
+RUN mkdir -p /checkpoints /state /opt/dagster/home /opt/dagster/logs \
+    && chown spark:spark /checkpoints /state /opt/dagster/home /opt/dagster/logs
 COPY pipelines /opt/pipelines
 COPY orchestration /opt/orchestration
 ENV PYTHONPATH=/opt/orchestration

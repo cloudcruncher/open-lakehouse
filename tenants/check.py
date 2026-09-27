@@ -66,6 +66,11 @@ def check_one(path: Path, t: dict) -> list[str]:
             errors.append(
                 f"{path.name}: namespace {ns} is outside the domain '{domain}_'"
             )
+    names = [svc["name"] for svc in t.get("services", [])]
+    for dup in sorted({n for n in names if names.count(n) > 1}):
+        errors.append(f"{path.name}: service '{dup}' is declared twice")
+    if "code" in names:
+        errors.append(f"{path.name}: service name 'code' is taken by the code server")
     return errors
 
 

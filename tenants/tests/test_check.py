@@ -101,3 +101,27 @@ def test_two_tenants_cannot_share_a_domain(tmp_path):
 def test_empty_file(tmp_path):
     (tmp_path / "empty.yaml").write_text("")
     assert check.check(tmp_path)
+
+
+SVC = {
+    "name": "feed",
+    "description": "A producer for live trades.",
+    "image": "x/y:1.0",
+    "memoryMb": 128,
+}
+
+
+def test_service_names_are_unique_and_not_code(tmp_path):
+    errors = errors_for(
+        tmp_path,
+        lambda t: t.update(services=[dict(SVC, name="code"), dict(SVC, name="code")]),
+    )
+    assert any("service 'code' is declared twice" in e for e in errors)
+    assert any("'code' is taken by the code server" in e for e in errors)
+
+
+def test_service_image_must_be_pinned(tmp_path):
+    errors = errors_for(
+        tmp_path, lambda t: t.update(services=[dict(SVC, image="x/y:latest")])
+    )
+    assert any("services/0/image" in e for e in errors)
