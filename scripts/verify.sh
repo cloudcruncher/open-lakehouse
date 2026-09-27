@@ -190,6 +190,10 @@ print(len(s), "SUCCEEDED" if set(s) == {"SUCCEEDED"} else s)' 2>&1 | tail -1)
   fi
   out=$("${DC[@]}" exec -T marquez curl -fsS "localhost:5000/api/v1/lineage?nodeId=dataset:s3://lakehouse:warehouse/gold/customer_360&depth=6" 2>&1)
   expect_contains "lineage: gold.customer_360 traces back to silver (OpenLineage)" "$out" "warehouse/silver/customers"
+  # Browsers send every localhost portal's cookies through the UI to the API (was a 431 past 8 KiB).
+  expect_contains "lineage UI API answers with a browser's worth of cookies (20 KiB)" \
+    "$("${DC[@]}" exec -T marquez curl -s -o /dev/null -w '%{http_code}' -H "Cookie: pad=$(printf '%020000d' 0)" \
+      http://marquez-web:3000/api/v1/namespaces 2>&1)" "^200$"
 fi
 
 echo

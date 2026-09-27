@@ -6,7 +6,7 @@ Live Call Assist. Open work is in [docs/next-steps.md](docs/next-steps.md); read
 
 ## Commands
 - `make demo`: start everything, seed, run pipelines, then `make verify`. Safe to re-run.
-- `make verify`: 67 end-to-end checks. Run after any change that touches the running stack.
+- `make verify`: 68 end-to-end checks. Run after any change that touches the running stack.
 - `make test` (OPA + Python unit tests), `make lint`, `make evals`, `make contracts`.
 - Tenant teams (ADR 14): `tenants/*.yaml`, `make tenants` (validate), `make tenants-apply` (reconcile),
   `make mem` (memory per container; tenant code servers are budgeted in `tenants/render.py`).
