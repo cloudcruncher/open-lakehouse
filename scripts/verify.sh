@@ -3,7 +3,7 @@
 # an executable assertion against the running platform. Exit code = failure count.
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
-DC=(docker compose --profile streaming --profile ops)
+DC=(docker compose --profile '*')   # every blueprint: checks skip what isn't running
 running() { [[ -n "$("${DC[@]}" ps -q --status running "$1" 2>/dev/null)" ]]; }
 
 PASS=0; FAIL=0
@@ -111,10 +111,10 @@ if running kafka; then
     "create in markets_bronze -> 200; create in silver -> 403"
   # Running, not producing: whether Coinbase answers is the tenant's concern, not the platform's.
   # card-auths runs without a licence too (it idles): CI has none.
-  expect_contains "tenant services run from their tenant file (markets-data card-auths, coinbase-feed, trades-stream)" \
+  expect_contains "tenant services run from their tenant file (markets-data card-auths, coinbase-feed, streams)" \
     "$("${DC[@]}" --profile tenant-code ps -a --format '{{.Service}}={{.State}}' tenant-markets-data-card-auths \
-      tenant-markets-data-coinbase-feed tenant-markets-data-trades-stream 2>&1 | sort | tr '\n' ' ')" \
-    "^tenant-markets-data-card-auths=running tenant-markets-data-coinbase-feed=running tenant-markets-data-trades-stream=running $"
+      tenant-markets-data-coinbase-feed tenant-markets-data-streams 2>&1 | sort | tr '\n' ' ')" \
+    "^tenant-markets-data-card-auths=running tenant-markets-data-coinbase-feed=running tenant-markets-data-streams=running $"
   # A tenant repo's own Compose project joins the platform's networks by name (ADR 14).
   expect_contains "a container outside this project joins open-lakehouse_data and reaches Polaris" \
     "$(docker run --rm --network open-lakehouse_data --entrypoint python open-lakehouse/platform:dev \
@@ -169,7 +169,7 @@ if running prometheus; then
 fi
 
 if running dagster-code; then
-  echo "▸ Orchestration and lineage"
+  echo "▸ Orchestration"
   out=$("${DC[@]}" exec -T dagster-code python3 -c '
 from lakehouse_orchestration.definitions import defs
 g = defs.resolve_asset_graph()
@@ -194,6 +194,10 @@ s = [(c["executionForLatestMaterialization"] or {}).get("status") for n in r["da
 print(len(s), "SUCCEEDED" if set(s) == {"SUCCEEDED"} else s)' 2>&1 | tail -1)
     expect_contains "Dagster: silver's stream writes and 16 WAP checks reported, all passing" "$out" "^16 SUCCEEDED$"
   fi
+fi
+
+if running marquez; then
+  echo "▸ Lineage (OpenLineage -> Marquez)"
   out=$("${DC[@]}" exec -T marquez curl -fsS "localhost:5000/api/v1/lineage?nodeId=dataset:s3://lakehouse:warehouse/gold/customer_360&depth=6" 2>&1)
   expect_contains "lineage: gold.customer_360 traces back to silver (OpenLineage)" "$out" "warehouse/silver/customers"
   # Browsers send every localhost portal's cookies through the UI to the API (was a 431 past 8 KiB).

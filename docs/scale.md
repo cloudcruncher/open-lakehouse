@@ -5,6 +5,39 @@ assumptions, the load they imply, and the architecture changes that load forces.
 number below is an assumption to validate with real traffic. Change the inputs and the
 design choices follow.
 
+## The machine it runs on today (laptop scale)
+
+Everything, platform and tenants, runs on one laptop, so volumes are sized to prove every
+path, not to load it. Measured 28 Sep 2026:
+
+| | |
+|---|---|
+| Mac | Apple M2 Pro, 12 cores (8 performance + 4 efficiency), 16 GB RAM |
+| Docker Desktop | 12 GB RAM, 1 GB swap; CPUs: 8 recommended (all 12 starve macOS under load) |
+| Stack with everything on | ~9–10 GB of the 12 GB VM |
+
+What that sizing means:
+
+- **One Spark driver per job family.** A driver carries ~450 MB besides its heap, so markets-data
+  runs both of its streams as one application (`tenant-markets-data-streams`, 1536 MB).
+- **Tenant budget 4608 MB** (`MEMORY_BUDGET_MB`, `tenants/render.py`), 4224 MB in use: the canary,
+  markets-data's code server, its streams app and two producers.
+- **RustFS 1 GiB.** At 512 MiB it thrashed at its limit once tenant streams committed, and every
+  Iceberg commit, Trino query and stream batch waited on it.
+- **Fewer commits.** CDC every 20 s (the freshness promise is 60 s); tenant streams every 2
+  minutes. Every commit is object-store work.
+- **Small volumes.** markets-data streams two Coinbase euro books (~1 trade/s) and ~1 card
+  authorisation a second.
+
+The OOM that set these numbers: with a driver per stream and RustFS at 512 MiB, the VM ran out
+(swap full) and the kernel killed Trino twice.
+
+Scaling up is settings, not code: Docker memory, `MEMORY_BUDGET_MB`, `memoryMb` in a tenant
+file, `CDC_TRIGGER`, and each tenant's own volume knobs (markets-data: README "Volumes").
+Longer term, the architecture below is the target, not a bigger laptop. For a
+session on a big machine without buying one, a GitHub Codespace (up to 32 cores / 128 GB, billed
+per hour) can run the stack; for always-on hosting, a VM.
+
 ## Load model
 
 | Input (assumption) | Value |

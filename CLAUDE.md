@@ -23,8 +23,8 @@ Live Call Assist. Open work is in [docs/next-steps.md](docs/next-steps.md); read
   commit the JSON. `make lint` fails if committed JSON differs from the builder output, so it
   reports a failure until regenerated dashboards are committed.
 - Orchestration code is baked into the `open-lakehouse/spark:dev` image. After editing
-  `jobs/spark/orchestration/`, run `docker compose --profile ops build dagster-code` and
-  `docker compose --profile ops up -d dagster-code`.
+  `jobs/spark/orchestration/`, run `docker compose --profile orchestration build dagster-code` and
+  `docker compose --profile orchestration up -d dagster-code`.
 - Data contracts (`contracts/*.odcs.yaml`) and OPA column tags must agree; `make contracts` checks it.
 
 ## Gotchas

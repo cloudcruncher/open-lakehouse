@@ -63,7 +63,7 @@ make evals       # Live Call Assist quality gate (runs in CI, no LLM needed)
 make urls        # consoles: call assist, Grafana, Dagster, lineage, Prometheus
 ```
 
-Needs Docker (~12 GB RAM for everything; `make up PROFILES=` runs the ~6 GB core only),
+Needs Docker (~12 GB RAM for everything, sized for a 16 GB laptop: [machine profile](docs/scale.md#the-machine-it-runs-on-today-laptop-scale); `make up PROFILES=` runs the ~6 GB core only),
 `uv` and `openssl`. Optional: `ANTHROPIC_API_KEY` adds an LLM understanding layer to the assistant.
 
 ## What it proves

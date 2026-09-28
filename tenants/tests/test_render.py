@@ -102,7 +102,7 @@ def test_tenants_over_the_memory_budget_fail():
     a["services"] = [STREAM]
     problem = render.over_budget([a] + [named(n, memoryMb=1536) for n in "bc"])
     assert (
-        "5888 MB (a code 1536, a trades-stream 1280, b code 1536, c code 1536), over the 5376 MB budget"
+        "5888 MB (a code 1536, a trades-stream 1280, b code 1536, c code 1536), over the 4608 MB budget"
         in problem
     )
 

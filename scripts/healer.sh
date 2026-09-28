@@ -17,7 +17,7 @@ cd "$(dirname "$0")/.." || exit 1
 CORE=(postgres rustfs polaris keycloak opa trino mcp-gateway)
 INTERVAL=${HEAL_INTERVAL:-3}
 PROJECT=open-lakehouse
-PROFILES=(--profile streaming --profile ops)
+PROFILES=(--profile '*')   # every blueprint (only named services are touched)
 
 log() { echo "$(date +%H:%M:%S) [healer] $*"; }
 
