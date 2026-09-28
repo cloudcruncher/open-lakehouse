@@ -75,13 +75,12 @@ Step 1.6 (parts 1 and 2): tenant files declare secret slots (`secrets:`), which 
 fills itself with `make tenant-secret` (never in git; stored in the tenant's own folder of the
 secrets volume); markets-data `0.4.0` adds a ShadowTraffic card-authorisation generator, run as
 the service `card-auths` with the `shadowtraffic` licence (idles without it, as in CI). Tenant
-workloads: 4480 of 4608 MB. Next is 1.6 part 3: the card-auth stream to bronze and silver, the
-DLQ, and EUR via `fx_rates`; it needs budget (see the backlog below).
+workloads: 4480 of 4608 MB. The budget for 1.6 part 3 is settled (28 Sep 2026): markets-data's code
+server trimmed 1536 -> 1024 MB and `MEMORY_BUDGET_MB` raised 4608 -> 5376, so the card-auth stream
+gets its own 1280 MB service (own failure domain, replayable alone for 1.9). Now 3968 of 5376 MB.
 
 ### Backlog to pick up (saved 27 Sep 2026, in order)
-1. **Budget for 1.6 part 3.** The card-auth stream (Spark, ~1280 MB) doesn't fit 4608 MB. Proposal:
-   trim markets-data's code server to 1024 MB (uses ~184 MiB) and raise `MEMORY_BUDGET_MB`
-   moderately (Docker VM has ~2.5 GiB free; `make mem` first). Or run both streams in one job.
+1. ~~Budget for 1.6 part 3~~ done 28 Sep 2026 (trim code server to 1024, budget 5376).
 2. **1.6 part 3** (markets-data, then a platform service): `markets.payments.card-auths` ->
    `markets_bronze.card_auths` (append) -> `markets_silver.card_auths` (typed, MERGE by
    `auth_id`), bad records to `markets.payments.card-auths.dlq` and a rejects table, amounts in

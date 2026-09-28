@@ -92,17 +92,17 @@ STREAM = {
 
 
 def test_tenants_within_the_memory_budget_pass():
-    a = named("a")
+    a = named("a", memoryMb=1536)
     a["services"] = [STREAM]
-    assert render.over_budget([a, named("b")]) is None  # 1536 + 1280 + 1536 = 4352
+    assert render.over_budget([a, named("b", memoryMb=1536)]) is None  # 1536 + 1280 + 1536 = 4352
 
 
 def test_tenants_over_the_memory_budget_fail():
-    a = named("a")
-    a["services"] = [dict(STREAM, memoryMb=512)]
-    problem = render.over_budget([a, named("b"), named("c")])
+    a = named("a", memoryMb=1536)
+    a["services"] = [STREAM]
+    problem = render.over_budget([a] + [named(n, memoryMb=1536) for n in "bc"])
     assert (
-        "5120 MB (a code 1536, a trades-stream 512, b code 1536, c code 1536), over the 4608 MB budget"
+        "5888 MB (a code 1536, a trades-stream 1280, b code 1536, c code 1536), over the 5376 MB budget"
         in problem
     )
 

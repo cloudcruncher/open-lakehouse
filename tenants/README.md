@@ -43,7 +43,7 @@ first time), then `make tenants-render`: the generated `compose.yaml` block and 
 `workspace.yaml` change in the same PR, so what runs is reviewed like any other change.
 
 Memory: all deployed tenant workloads together (code servers and services, by `memoryMb`) get
-`MEMORY_BUDGET_MB` (4608: the canary, and markets-data's code server, stream and producers) in
+`MEMORY_BUDGET_MB` (5376: the canary, and markets-data's code server, two streams and producers) in
 `tenants/render.py`; `make lint` fails over it, so the next workload is a decision in its PR. `make mem` shows use against limits per container. Tenant code
 servers are switched off with `make up PROFILES="streaming ops"` (after `make down` if running);
 the reconciler still runs, so topics, namespaces and grants stay in place.

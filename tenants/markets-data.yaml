@@ -37,6 +37,7 @@ codeLocation:
   image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.4.0
   module: markets_data.definitions
   deploy: true    # v0.4.0 published by lakehouse-markets-data (signed, public)
+  memoryMb: 1024   # idles well below this; frees room for the card-auths stream
 services:
   - name: coinbase-feed
     description: Coinbase public trades (no key) to markets.coinbase.trades, keyed by product.
