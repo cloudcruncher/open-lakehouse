@@ -77,23 +77,27 @@ secrets volume); markets-data `0.4.0` adds a ShadowTraffic card-authorisation ge
 the service `card-auths` with the `shadowtraffic` licence (idles without it, as in CI). Tenant
 workloads: 4480 of 4608 MB. The budget for 1.6 part 3 is settled (28 Sep 2026): markets-data's code
 server trimmed 1536 -> 1024 MB and `MEMORY_BUDGET_MB` raised 4608 -> 5376, so the card-auth stream
-gets its own 1280 MB service (own failure domain, replayable alone for 1.9). Now 3968 of 5376 MB.
+gets its own 1280 MB service (own failure domain, replayable alone for 1.9). Then (28 Sep 2026)
+the full stack OOM-killed Trino on the 16 GB Mac, so the platform got a laptop profile
+([scale](scale.md#the-machine-it-runs-on-today-laptop-scale)): Compose profiles regrouped into
+blueprints (core always; streaming, orchestration, tenants; observability, lineage, bi, ai), `make
+SCALE=laptop|full`, `PLATFORM_SCALE` passed to tenants (markets-data 0.8.0 runs its streams as
+5-minute `availableNow` catch-ups on a laptop), Docker at 8 CPUs / 10 GB, and the tenant budget back
+to 4608 MB (4096 in use; markets-data 0.8.0 with gold and one streams app). PRs run the laptop set in
+e2e, `main` and the weekly run the full one.
 
 ### Backlog to pick up (saved 27 Sep 2026, in order)
 1. ~~Budget for 1.6 part 3~~ done 28 Sep 2026 (trim code server to 1024, budget 5376).
-2. **1.6 part 3** (markets-data, then a platform service): `markets.payments.card-auths` ->
-   `markets_bronze.card_auths` (append) -> `markets_silver.card_auths` (typed, MERGE by
-   `auth_id`), bad records to `markets.payments.card-auths.dlq` and a rejects table, amounts in
-   EUR via the latest `fx_rates` on or before the auth date. Contract; `make spark-check` cases.
-3. **1.7** sanctions (OpenSanctions / HMT) daily batch; screen card-auth merchants.
-4. **1.8** gold: `crypto_ohlcv_1m`, `card_auth_daily`, `sanctions_hits` (contracts, checks, freshness).
-5. **1.9** Kappa replay demo (`trades_v2`, compare, swap a view). **1.10** dashboards (Superset
+2. ~~1.6 part 3~~ done 28 Sep 2026 (markets-data 0.5.0: card auths to bronze, silver by MERGE, DLQ, EUR).
+3. ~~1.7 sanctions~~ done (0.6.0: FCDO list via OpenSanctions, merchants screened).
+4. ~~1.8 gold~~ done (0.7.0: `crypto_ohlcv_1m`, `card_auth_daily`, `sanctions_hits`; 0.8.0 adds `PLATFORM_SCALE`).
+5. **1.9** (next) Kappa replay demo (`trades_v2`, compare, swap a view). **1.10** dashboards (Superset
    on gold, Grafana stream lag and freshness).
 6. Then `lakehouse-ai-desk`, `lakehouse-risk-signals`, phase 2 (corebank out of this repo).
 
 Smaller, when convenient:
-- **The ShadowTraffic trial expires 27 Oct 2026**: `make tenant-secret TENANT=markets-data
-  NAME=shadowtraffic FILE=<renewed licence.env>` (the generator idles until then).
+- ShadowTraffic: the trial licence lapses 27 Oct 2026 and we are not renewing it. The stack is
+  proven without it; the `card-auths` generator idles without a licence, as in CI.
 - Lineage: Marquez shows no Kafka -> bronze/silver edges for the trades stream (OpenLineage
   doesn't see streaming `toTable` or a MERGE from a batch view); dataset clutter (Iceberg
   metadata tables such as `*.snapshots`, the same tables again under `s3://lakehouse`, the empty
