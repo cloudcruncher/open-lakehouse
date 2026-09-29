@@ -96,6 +96,9 @@ e2e, `main` and the weekly run the full one.
 6. Then `lakehouse-ai-desk`, `lakehouse-risk-signals`, phase 2 (corebank out of this repo).
 
 Smaller, when convenient:
+- Blueprint slice 1 done (ADR 15): `corebank` is its own blueprint. Next: `blueprints:` in the tenant file,
+  per-tenant Compose profiles and `make up USE=...` (slice 2), then the time-to-first-data target (slice 3).
+  `make urls` still prints every portal, running or not.
 - `make stop BLUEPRINTS=...` (29 Sep 2026) is the reverse of `make up PROFILES=...`. Dagster's queue could
   be blocked by a dead run holding its only slot; `max_runtime_seconds: 3600` and two `verify` checks now
   cover it ([runbook](runbooks.md#dagster-queue-stuck)).

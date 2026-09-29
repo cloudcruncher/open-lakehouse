@@ -27,7 +27,8 @@ Bring a blueprint up to look at it, then stop it, to stay inside a 10 GB VM.
 | Blueprint | What it adds | Laptop | Full |
 |---|---|---|---|
 | core (always) | Postgres, RustFS, Polaris, Keycloak, OPA, Trino, MCP gateway | yes | yes |
-| `streaming` | Kafka, Debezium, the CDC stream, the tenant reconciler | yes | yes |
+| `streaming` | Kafka and the tenant reconciler | yes | yes |
+| `corebank` | Debezium, the CDC stream and the bank's Kafka topics; Dagster's bank schedules | yes | yes |
 | `orchestration` | Dagster and its code server | yes | yes |
 | `tenants` | tenant code servers and services (a switch for `make up`) | yes | yes |
 | `observability` | Prometheus, Grafana, exporters | | yes |
@@ -35,7 +36,9 @@ Bring a blueprint up to look at it, then stop it, to stay inside a 10 GB VM.
 | `bi` | Superset SQL workbench | | yes |
 | `ai` | Live Call Assist and the call simulator | | yes |
 
-`observability` and `ai` read Kafka, so `make` refuses them without `streaming`. CI runs the
+`observability`, `ai` and `corebank` read Kafka, so `make` refuses them without `streaming`. A tenant that
+needs no core banking leaves `corebank` out: `make up PROFILES="streaming orchestration tenants"` measured
+4.7 to 4.9 GiB of containers against 6.4 GiB with it. CI runs the
 laptop set on pull requests and the full set on `main` and weekly.
 
 ### What the laptop set does differently
