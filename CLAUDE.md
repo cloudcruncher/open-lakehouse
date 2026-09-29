@@ -6,6 +6,7 @@ Live Call Assist. Open work is in [docs/next-steps.md](docs/next-steps.md); read
 
 ## Commands
 - `make demo`: start everything, seed, run pipelines, then `make verify`. Safe to re-run.
+- `make stop BLUEPRINTS="bi lineage"`: stop only those blueprints (the reverse of `make up PROFILES=...`).
 - `make verify`: 69 end-to-end checks. Run after any change that touches the running stack.
 - `make test` (OPA + Python unit tests), `make lint`, `make evals`, `make contracts`.
 - Tenant teams (ADR 14): `tenants/*.yaml`, `make tenants` (validate), `make tenants-apply` (reconcile),
@@ -43,6 +44,9 @@ Live Call Assist. Open work is in [docs/next-steps.md](docs/next-steps.md); read
   The token dies with the Keycloak session (30 min idle); SQL Lab then asks to authorize again.
 - `make sql` passes the query through make, so `$` is eaten: for `"table$snapshots"` use
   `scripts/trino-sql.sh ops_admin '...'` directly.
+- `dagster.yaml` is a single-file bind mount: editing it with `sed -i` (a new file) leaves running containers
+  seeing it as missing. Edit in place, then recreate `dagster-code`, `dagster-daemon`, `dagster-webserver` and the
+  tenant code servers by name (`up -d --force-recreate <names>`; with no names it recreates every profile).
 - `docker kill` bypasses restart policies; `make heal` reconciles.
 - Counter series only exist once incremented: PromQL over error counters needs `or vector(0)`.
 - GitHub: poll `gh` sparingly (secondary rate limit). The e2e workflow cancels superseded runs,

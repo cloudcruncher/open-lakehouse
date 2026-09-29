@@ -96,6 +96,9 @@ e2e, `main` and the weekly run the full one.
 6. Then `lakehouse-ai-desk`, `lakehouse-risk-signals`, phase 2 (corebank out of this repo).
 
 Smaller, when convenient:
+- `make stop BLUEPRINTS=...` (29 Sep 2026) is the reverse of `make up PROFILES=...`. Dagster's queue could
+  be blocked by a dead run holding its only slot; `max_runtime_seconds: 3600` and two `verify` checks now
+  cover it ([runbook](runbooks.md#dagster-queue-stuck)).
 - ShadowTraffic: the trial licence lapses 27 Oct 2026 and we are not renewing it. The stack is
   proven without it; the `card-auths` generator idles without a licence, as in CI.
 - Lineage: Marquez shows no Kafka -> bronze/silver edges for the trades stream (OpenLineage

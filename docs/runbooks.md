@@ -85,6 +85,15 @@ parent arrives, then quarantined after `CDC_ORPHAN_GRACE` (15 min).
 was invalidated: re-create the connector, then run a batch backfill (`make pipeline`
 with the stream stopped) to close the gap.
 
+## dagster-queue-stuck
+**Means:** runs sit in QUEUED and nothing starts (gold empty, schedules ticking but not running).
+Dagster runs one job at a time, and a run whose worker died (the stack was stopped mid-run) can stay
+STARTED and hold the only slot. The daemon log says "1 runs are currently in progress. Maximum is 1".
+`run_monitoring.max_runtime_seconds` (3600, `services/orchestrator/dagster.yaml`) now fails such a run
+within an hour, and `make verify` checks the cap and that no run is older than it.
+**Mitigate:** in Dagster's Runs page, terminate the old STARTED run (choose to mark it canceled);
+the queue then drains in order. Cancel queued duplicates from before the outage if they are stale.
+
 ## ai-budget
 **Means:** today's estimated model spend is past 80% of `CALL_ASSIST_DAILY_BUDGET_USD`
 ([ADR 12](adr/0012-ai-call-note-and-a-spend-cap.md)). At 100% the assistant stops calling

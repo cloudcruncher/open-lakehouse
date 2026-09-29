@@ -20,9 +20,13 @@ run_coordinator:
       - { key: lakehouse/writer, value: { applyLimitPerUniqueValue: true }, limit: 1 }
 
 # Detect runs whose worker died (OOM, node loss) and fail them, so retries fire.
+# max_runtime_seconds is the backstop: with one run at a time (above), a run whose worker is
+# gone but still marked STARTED would otherwise hold the only slot and queue every schedule
+# behind it (seen 29 Sep 2026 after a restart). The longest job here takes minutes.
 run_monitoring:
   enabled: true
   start_timeout_seconds: 300
+  max_runtime_seconds: 3600
   max_resume_run_attempts: 0
   poll_interval_seconds: 30
 

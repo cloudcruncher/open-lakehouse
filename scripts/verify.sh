@@ -184,6 +184,16 @@ q = "{workspaceOrError{... on Workspace{locationEntries{name locationOrLoadError
 r = json.load(u.urlopen(u.Request("http://localhost:3000/graphql", json.dumps({"query": q}).encode(), {"Content-Type": "application/json"})))
 print(",".join(sorted(e["name"] for e in r["data"]["workspaceOrError"]["locationEntries"] if e["locationOrLoadError"]["__typename"] == "RepositoryLocation")))' 2>&1 | tail -1)
   expect_contains "Dagster: platform and tenant code locations load (canary, markets-data)" "$out" "^canary,lakehouse,markets-data$"
+  # One run at a time: a run whose worker died but stays STARTED would hold the only slot and queue
+  # every schedule behind it (29 Sep 2026: markets gold stayed empty). max_runtime_seconds fails it.
+  expect_contains "Dagster: run monitoring caps a run's runtime (a dead worker cannot block the queue)" \
+    "$("${DC[@]}" exec -T dagster-daemon grep -o 'max_runtime_seconds: [0-9]*' /opt/dagster/home/dagster.yaml 2>&1)" "^max_runtime_seconds: 3600$"
+  out=$("${DC[@]}" exec -T dagster-webserver python3 -c '
+import json, time, urllib.request as u
+q = "{runsOrError(filter:{statuses:[STARTED]}){... on Runs{results{startTime}}}}"
+r = json.load(u.urlopen(u.Request("http://localhost:3000/graphql", json.dumps({"query": q}).encode(), {"Content-Type": "application/json"})))
+print(sum(1 for x in r["data"]["runsOrError"]["results"] if x["startTime"] and time.time() - x["startTime"] > 3900))' 2>&1 | tail -1)
+  expect_contains "Dagster: no run has been in progress past the cap" "$out" "^0$"
   if running cdc-stream; then
     # The stream writes silver outside Dagster; it reports its writes and WAP checks (runless).
     out=$("${DC[@]}" exec -T dagster-webserver python3 -c '
