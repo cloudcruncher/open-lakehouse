@@ -10,7 +10,7 @@
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1
 
-PROFILES=(--profile streaming --profile ops)
+PROFILES=(--profile '*')   # every blueprint (only named services are touched)
 dc() { docker compose "${PROFILES[@]}" "$@"; }
 SERVING=(opa trino polaris keycloak postgres rustfs mcp-gateway)
 STREAMING=(kafka cdc-connect cdc-stream call-assist)

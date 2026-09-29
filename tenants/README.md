@@ -43,9 +43,9 @@ first time), then `make tenants-render`: the generated `compose.yaml` block and 
 `workspace.yaml` change in the same PR, so what runs is reviewed like any other change.
 
 Memory: all deployed tenant workloads together (code servers and services, by `memoryMb`) get
-`MEMORY_BUDGET_MB` (5376: the canary, and markets-data's code server, two streams and producers) in
+`MEMORY_BUDGET_MB` (4608, sized for a 10 GB Docker VM: the canary, and markets-data's code server, streams app and producers) in
 `tenants/render.py`; `make lint` fails over it, so the next workload is a decision in its PR. `make mem` shows use against limits per container. Tenant code
-servers are switched off with `make up PROFILES="streaming ops"` (after `make down` if running);
+servers are switched off by leaving `tenants` out of `PROFILES`, e.g. `make up PROFILES="streaming orchestration"` (after `make down` if running);
 the reconciler still runs, so topics, namespaces and grants stay in place.
 
 The canary (`tenants/canary.yaml`) is the platform's own tenant: five synthetic people in
@@ -55,6 +55,9 @@ exercises the real path: reconcile, code server, tenant-only credentials, Spark 
 Polaris. `make canary` runs it (about 25 s, peaks near 850 MiB of its 1024). Dagster's
 `workspace.yaml` is baked into the orchestrator image, so a new location appears after `make up`
 (it rebuilds); with tenants switched off, their locations show as unavailable in the UI.
+
+Tenant workloads also get `PLATFORM_SCALE` (`laptop` or `full`, from `make SCALE=`), so a team can
+run its streams as scheduled catch-ups on a laptop and always-on at scale (markets-data does).
 
 Known laptop compromise: tenant code servers share the Dagster instance database with the
 platform (runs execute in the code server). In production each tenant gets its own run launcher

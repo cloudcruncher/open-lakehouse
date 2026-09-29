@@ -34,6 +34,10 @@ jobs:
   platform:
     runs-on: ubuntu-latest   # public repos: 4 vCPU, 16 GB
     timeout-minutes: 75
+    env:
+      # Both sizes of docs/scale.md: a PR runs the laptop blueprints (what a colleague runs, and
+      # quicker); main and the weekly run start every blueprint at full scale.
+      SCALE: ${{ github.event_name == 'pull_request' && 'laptop' || 'full' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -47,8 +51,8 @@ jobs:
           df -h / && free -g
           sudo nohup rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android \
             /opt/hostedtoolcache/CodeQL >/dev/null 2>&1 &
-      - name: Platform from zero -> seed -> pipelines -> verify
-        run: make demo
+      - name: Platform from zero -> seed -> pipelines -> verify (${{ env.SCALE }})
+        run: make demo SCALE=$SCALE
       - name: Disk used by the platform
         if: always()
         run: df -h / && docker system df
@@ -62,8 +66,8 @@ jobs:
       - name: Collect state on failure
         if: failure()
         run: |
-          docker compose --profile streaming --profile ops ps -a > state.txt
-          docker compose --profile streaming --profile ops logs --no-color --tail=300 > logs.txt 2>&1
+          docker compose --profile '*' ps -a > state.txt
+          docker compose --profile '*' logs --no-color --tail=300 > logs.txt 2>&1
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: failure()
         with:

@@ -5,6 +5,73 @@ assumptions, the load they imply, and the architecture changes that load forces.
 number below is an assumption to validate with real traffic. Change the inputs and the
 design choices follow.
 
+## The machine it runs on today (laptop scale)
+
+The goal of the laptop is to prove the stack, the tenant model and how the design federates, not
+throughput. Volumes are sized to exercise every path, not to load it. Measured 28 Sep 2026:
+
+| | |
+|---|---|
+| Mac | Apple M2 Pro, 12 cores (8 performance + 4 efficiency), 16 GB RAM |
+| Docker Desktop | 8 CPUs, 10 GB RAM (12 GB with everything on left macOS swapping and the kernel killing Trino) |
+
+### Blueprints
+
+Compose profiles are blueprints: the governed core always runs, and a team or a machine picks the
+rest. `make SCALE=laptop|full` chooses a default set and tells tenant workloads the platform's
+size (`PLATFORM_SCALE`). Any set works: `make up PROFILES="streaming orchestration bi"`; core
+only is `make up PROFILES=`.
+
+| Blueprint | What it adds | Laptop | Full |
+|---|---|---|---|
+| core (always) | Postgres, RustFS, Polaris, Keycloak, OPA, Trino, MCP gateway | yes | yes |
+| `streaming` | Kafka, Debezium, the CDC stream, the tenant reconciler | yes | yes |
+| `orchestration` | Dagster and its code server | yes | yes |
+| `tenants` | tenant code servers and services (a switch for `make up`) | yes | yes |
+| `observability` | Prometheus, Grafana, exporters | | yes |
+| `lineage` | Marquez, OpenLineage UI | | yes |
+| `bi` | Superset SQL workbench | | yes |
+| `ai` | Live Call Assist and the call simulator | | yes |
+
+`observability` and `ai` read Kafka, so `make` refuses them without `streaming`. CI runs the
+laptop set on pull requests and the full set on `main` and weekly.
+
+### What the laptop set does differently
+
+- **Tenant streams are micro-batches.** With `PLATFORM_SCALE=laptop`, markets-data runs each stream
+  as an `availableNow` catch-up every 5 minutes, in a loop inside one Spark application; with
+  `full` it stays always on. Between catch-ups the streams container holds ~6 MiB, against
+  ~1.1 GiB for an always-on driver, and the VM's available memory rose from 2.2 to 3.0 GB.
+- **One Spark job at a time.** Dagster runs one job at once (`max_concurrent_runs: 1`), so batch
+  jobs never stack drivers on top of each other.
+- **CDC stays always on** (every 20 s, 1024 MB driver): it carries the 60 s freshness promise and
+  the Live Call Assist claims. Tenant data is allowed to be minutes fresh.
+- **Right-sized services.** Trino has its own `jvm.config` (1280 MB heap, 1792 MB limit), Dagster's
+  code server 1280 MB Spark driver / 2304 MB limit, RustFS 1 GiB. At 512 MiB RustFS thrashed once tenant
+  streams committed, and every Iceberg commit, Trino query and stream batch waited on it.
+- **One driver per job family.** A Spark driver carries ~450 MB besides its heap, so
+  markets-data runs both streams as one application (`tenant-markets-data-streams`).
+- **Tenant budget 4608 MB** (`MEMORY_BUDGET_MB`, `tenants/render.py`), 4096 MB in use: the canary,
+  markets-data's code server, streams app and two producers. `make lint` fails over it.
+- **Small volumes.** markets-data streams two Coinbase euro books (~1 trade/s) and ~1 card
+  authorisation a second.
+
+The OOM that set these numbers: with an always-on driver per stream and RustFS at 512 MiB, the VM
+ran out (swap full) and the kernel killed Trino twice.
+
+Working rules on this machine: don't run heavy jobs in parallel (`make verify`, `make spark-check`
+and `make demo` one at a time), check `make mem` before and after a change, and leave the Spark
+checks to CI where you can. Target: about 4 GB idle and 5.5 GB at peak for the laptop set; confirm
+with `make mem` on your machine.
+
+### Scaling up
+
+Scaling up is settings, not code: `SCALE=full`, Docker memory, `MEMORY_BUDGET_MB`, `memoryMb` in a
+tenant file, `CDC_TRIGGER`, and each tenant's own volume knobs (markets-data: README "Volumes").
+Longer term, the architecture below is the target, not a bigger laptop. For a session on a big
+machine without buying one, a GitHub Codespace (up to 32 cores / 128 GB, billed per hour) can run
+the stack; for always-on hosting, a VM.
+
 ## Load model
 
 | Input (assumption) | Value |

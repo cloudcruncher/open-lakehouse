@@ -26,7 +26,7 @@ import check  # tenants/check.py, next to this file
 KEY = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 # `make tenant-secret` passes the Makefile's Compose command (with every profile the stack runs):
 # `run` needs the reconciler's dependencies to be defined, even though it doesn't start them.
-DEFAULT_COMPOSE = "docker compose --profile streaming --profile ops"
+DEFAULT_COMPOSE = "docker compose --profile *"  # every blueprint; no shell, so * is literal
 COMPOSE = [*os.environ.get("COMPOSE", DEFAULT_COMPOSE).split(), "--profile", "tenant-code"]
 
 
