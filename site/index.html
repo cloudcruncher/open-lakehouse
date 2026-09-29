@@ -237,7 +237,7 @@ footer { border-top: 1px solid var(--line); padding-block: 28px 48px; color: var
     Open Lakehouse
   </a>
   <nav aria-label="Sections">
-    <a href="#demo">Demo</a><a href="#architecture">Architecture</a><a href="#proof">Proof</a><a href="#chaos">Chaos</a><a href="#scale">Scale</a><a href="https://github.com/cloudcruncher/open-lakehouse">GitHub</a>
+    <a href="#demo">Demo</a><a href="#architecture">Architecture</a><a href="#tenants">Tenants</a><a href="#proof">Proof</a><a href="#chaos">Chaos</a><a href="#scale">Scale</a><a href="https://github.com/cloudcruncher/open-lakehouse">GitHub</a>
   </nav>
   <div class="badges" aria-label="Latest CI results">
     <span class="badge">ci <b>passing</b></span><span class="badge">e2e <b>69/69</b></span><span class="badge">release <b>signed</b></span>
@@ -252,7 +252,7 @@ footer { border-top: 1px solid var(--line); padding-block: 28px 48px; color: var
     <p class="lede">An open lakehouse (Iceberg, Polaris, Trino, OPA, Kafka, Spark) built around one hard consumer: an AI assistant on a bank colleague's live customer call. The assistant is the demo. The platform underneath is the point, so every answer shows how the platform produced it.</p>
     <div class="hero-stats">
       <div><b class="num">~10 s</b><span>source commit to visible for a colleague (CDC)</span></div>
-      <div><b class="num">56</b><span>end-to-end checks on every push, from an empty machine</span></div>
+      <div><b class="num">69</b><span>end-to-end checks on the full stack for every merge, from an empty machine</span></div>
       <div><b class="num">11/11</b><span>components killed and recovered with no data lost</span></div>
     </div>
     <div class="cta">
@@ -393,6 +393,53 @@ make sql U=carol Q="SELECT * FROM lakehouse.silver.accounts"  <span class="c"># 
   </div>
 </section>
 
+<!-- ============================================================ TENANTS -->
+<section id="tenants" aria-labelledby="tenants-h">
+  <div class="sec-head">
+    <p class="eyebrow">Tenants</p>
+    <h2 id="tenants-h">One platform, a stack for every use case</h2>
+    <p class="lede">Teams build their own data products and AI tools in their own repos. Each team picks the platform services it needs and runs only those, so a markets demo does not start core banking, and the bank demo does not start markets.</p>
+  </div>
+  <div class="two">
+    <div>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th scope="col">Blueprint</th><th scope="col">What it adds</th><th scope="col">Status</th></tr></thead>
+          <tbody>
+            <tr><td><b>core</b></td><td>Postgres, object storage, Polaris, Keycloak, OPA, Trino, MCP gateway. Always on, so identity, policy and audit are never optional.</td><td class="res">built</td></tr>
+            <tr><td><b>streaming</b></td><td>Kafka and the tenant reconciler</td><td class="res">built</td></tr>
+            <tr><td><b>orchestration</b></td><td>Dagster, one code server per tenant</td><td class="res">built</td></tr>
+            <tr><td><b>corebank</b></td><td>Change capture, seed data and the core-banking pipelines. Today bundled inside streaming.</td><td><span class="chip">next</span></td></tr>
+            <tr><td><b>observability · lineage · bi · ai</b></td><td>Grafana and Prometheus, Marquez, the SQL workbench, Live Call Assist</td><td class="res">built, opt-in</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <pre class="cmd"><span class="c"># the laptop set: core, streaming, orchestration, tenants</span>
+make up
+<span class="c"># everything, for a bigger machine</span>
+make SCALE=full up
+<span class="c"># next: a stack per use case, from what each tenant declares</span>
+make up USE=markets-data</pre>
+    </div>
+    <div>
+      <ul class="limits">
+        <li><b>One pull request onboards a team.</b> A file, <code>tenants/&lt;team&gt;.yaml</code>, becomes Kafka topics, Polaris namespaces, a Keycloak group, an identity that can write only its own namespaces, and a Dagster code location. Nothing is granted by hand.</li>
+        <li><b>The platform tests the platform.</b> A small canary tenant proves reconcile, per-team identity, grants and memory budgets on every change, so no real team's code is needed.</li>
+        <li><b>Tenants test themselves.</b> <a href="https://github.com/cloudcruncher/lakehouse-markets-data">lakehouse-markets-data</a> owns its streams, data checks and releases. The platform only pins its image tag.</li>
+        <li><b>Memory is a budget.</b> Tenant workloads share 4,608 MB, 4,096 in use. The laptop set measured 6.5 GiB of containers on a 10 GB Docker VM, with no out-of-memory kills.</li>
+      </ul>
+      <div class="stage" style="margin-top:20px" aria-label="What markets-data brings">
+        <div class="row"><b>trades</b><code>Coinbase WebSocket → Kafka → bronze, silver, rejects</code></div>
+        <div class="row"><b>card auths</b><code>ShadowTraffic → Kafka → bronze, silver, dead-letter topic</code></div>
+        <div class="row"><b>reference</b><code>ECB FX rates and the FCDO sanctions list, daily</code></div>
+        <div class="row"><b>gold</b><code>1-minute candles · card auths per day · sanctions hits</code></div>
+        <div class="row"><b>access</b><code>every colleague reads gold · bronze and silver: platform admins</code></div>
+      </div>
+      <p class="note" style="margin-top:16px">Read the plain-words overview in <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/vision.md">docs/vision.md</a>, and the decision in <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/adr/0015-blueprints-and-a-stack-per-use-case.md">ADR 15</a>.</p>
+    </div>
+  </div>
+</section>
+
 <!-- ============================================================= PROOF -->
 <section id="proof" aria-labelledby="proof-h">
   <div class="sec-head">
@@ -412,6 +459,7 @@ make sql U=carol Q="SELECT * FROM lakehouse.silver.accounts"  <span class="c"># 
         <tr><td>Tamper-evident audit</td><td>Hash chain verified; DELETE on the audit log is refused; denied calls are audited too</td><td class="res">pass</td></tr>
         <tr><td>Bad data never reaches silver</td><td>ODCS contracts, quarantine with reasons, WAP publish only after checks; late parents are retried, not dropped</td><td class="res">0 violations</td></tr>
         <tr><td>Safe AI guidance</td><td>Offline eval gate: intent/vulnerability/risk recall, 8 scripted calls, zero ungrounded cards; injection rejected before any SQL</td><td class="res">8/8 · 0 ungrounded</td></tr>
+        <tr><td>Teams onboard without hand grants</td><td>The tenant file becomes topics, namespaces, an identity and a code server; the canary tenant writes as itself (200 on its namespace, 403 on silver); a container outside the project joins the platform networks; the tenant memory budget fails lint when exceeded</td><td class="res">pass</td></tr>
         <tr><td>Raw data for platform admins only</td><td>Colleagues are refused bronze; the admin reads bronze but every whole-record payload is NULL, including in quarantine; contracts declare the tag</td><td class="res">pass</td></tr>
         <tr><td>AI spend capped and visible</td><td>A daily cap on model spend is exported and alerted on; every fallback to rules or the template names its reason; cost and cache hits per call on the dashboard</td><td class="res">pass</td></tr>
         <tr><td>Operable</td><td>Every scrape target up (Trino via a machine identity), 20 SLO and burn-rate rules loaded, dashboards from code, Dagster behind SSO</td><td class="res">pass</td></tr>
@@ -481,10 +529,10 @@ make sql U=carol Q="SELECT * FROM lakehouse.silver.accounts"  <span class="c"># 
     <div>
       <p class="eyebrow">Run it yourself</p>
       <h2 id="run-h" style="margin-top:12px">From zero to a live call in one command</h2>
-      <pre class="cmd"><span class="c"># Docker with ~12 GB, uv, make</span>
+      <pre class="cmd"><span class="c"># Docker with 10 GB (laptop set), uv, make</span>
 git clone https://github.com/cloudcruncher/open-lakehouse
 cd open-lakehouse
-make demo        <span class="c"># up, seed, pipelines, 69 checks</span>
+make demo        <span class="c"># up, seed, pipelines, then the checks</span>
 make urls        <span class="c"># console, Grafana, Dagster, lineage, SQL workbench</span>
 make live-demo   <span class="c"># play every demo call as alice</span>
 make chaos       <span class="c"># break it on purpose</span></pre>
@@ -496,7 +544,9 @@ make chaos       <span class="c"># break it on purpose</span></pre>
         <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/adr/0011-sql-workbench-queries-as-the-colleague.md"><span>0011</span>The SQL workbench queries as the colleague</a>
         <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/adr/0012-ai-call-note-and-a-spend-cap.md"><span>0012</span>The AI writes the call note, under a spend cap</a>
         <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/adr/0013-ask-the-assistant-the-model-routes.md"><span>0013</span>Ask the assistant: the model routes, governed code answers</a>
-        <a href="https://github.com/cloudcruncher/open-lakehouse/tree/main/docs/adr"><span>all</span>Thirteen decision records</a>
+        <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/adr/0014-platform-and-tenant-teams-in-separate-repos.md"><span>0014</span>The platform serves tenant teams in their own repos</a>
+        <a href="https://github.com/cloudcruncher/open-lakehouse/blob/main/docs/adr/0015-blueprints-and-a-stack-per-use-case.md"><span>0015</span>Blueprints, and a stack per use case</a>
+        <a href="https://github.com/cloudcruncher/open-lakehouse/tree/main/docs/adr"><span>all</span>Fifteen decision records</a>
       </div>
     </div>
     <div>
