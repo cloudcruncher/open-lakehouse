@@ -10,6 +10,9 @@ call**. Within a second of the caller speaking, it puts the right customer data 
 right procedure on screen. It sees exactly what that colleague is cleared to see, every
 lookup is audited, and every failure fails safe.
 
+**New here?** Read [One platform, a stack for every use case](docs/vision.md): what we are building
+and why, in plain words, with the road ahead.
+
 **Interactive tour:** [cloudcruncher.github.io/open-lakehouse](https://cloudcruncher.github.io/open-lakehouse/)
 (architecture explorer, request and data paths, chaos results, scale calculator).
 
