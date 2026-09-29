@@ -131,10 +131,17 @@ urls: ## Where everything is (all bound to localhost only)
 	@echo "  MCP gateway               http://localhost:8000/mcp"
 	@echo "  Demo password: grep DEMO_USER_PASSWORD .env"
 
-down: ## Stop the platform (data is kept)
+down: ## Stop the whole platform (data is kept)
 	$(ALL) down
+
+# The reverse of `make up PROFILES=...` for one blueprint: its services only, the rest keeps running.
+# The core has no profile, so it can never be named here. `tenants` is the tenant-code profile.
+stop: ## Stop and remove only these blueprints, e.g. make stop BLUEPRINTS="bi lineage" (data is kept)
+	@[ -n "$(BLUEPRINTS)" ] || { echo 'usage: make stop BLUEPRINTS="bi lineage"'; exit 2; }
+	@svcs=$$(scripts/blueprint-services.py $(BLUEPRINTS)) || exit $$?; \
+	 echo "stopping: $$(echo $$svcs)"; $(ALL) rm -sf $$svcs
 
 destroy: ## Stop and DELETE all data volumes (asks first)
 	@read -p "Delete ALL lakehouse data volumes? [y/N] " a && [[ $$a == y ]] && $(ALL) down -v
 
-.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts tenants tenants-apply tenants-render tenant-secret canary mem chaos heal test lint dashboards sql agent urls down destroy
+.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts tenants tenants-apply tenants-render tenant-secret canary mem chaos heal test lint dashboards sql agent urls down stop destroy

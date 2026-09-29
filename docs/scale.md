@@ -20,7 +20,9 @@ throughput. Volumes are sized to exercise every path, not to load it. Measured 2
 Compose profiles are blueprints: the governed core always runs, and a team or a machine picks the
 rest. `make SCALE=laptop|full` chooses a default set and tells tenant workloads the platform's
 size (`PLATFORM_SCALE`). Any set works: `make up PROFILES="streaming orchestration bi"`; core
-only is `make up PROFILES=`.
+only is `make up PROFILES=`. The reverse for one blueprint is `make stop BLUEPRINTS="bi lineage"`: it
+stops and removes only those services and leaves the rest running (`make down` still stops everything).
+Bring a blueprint up to look at it, then stop it, to stay inside a 10 GB VM.
 
 | Blueprint | What it adds | Laptop | Full |
 |---|---|---|---|
