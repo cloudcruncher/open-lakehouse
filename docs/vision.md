@@ -83,18 +83,28 @@ opt-in. A tenant declares what it needs and the platform starts only that.
 | **core** | Postgres, object storage (RustFS), Iceberg catalog (Polaris), identity (Keycloak), policy (OPA), query engine (Trino), MCP gateway | built, always on |
 | **streaming** | Kafka and the reconciler that creates a team's topics, namespaces and grants | built |
 | **orchestration** | Dagster: schedules, asset pages, one code server per tenant | built |
-| **corebank** | The bank's change-data-capture (Debezium), its silver and gold jobs, the seed | **next**: today it is bundled inside `streaming` |
+| **corebank** | The bank's change data capture (Debezium and the CDC stream) and its Kafka topics. The seed and batch jobs run on demand, and Dagster's bank schedules follow this blueprint. | built |
 | **observability** | Prometheus and Grafana: dashboards, SLOs, alerts | built, opt-in |
 | **lineage** | Marquez: which job made which table | built, opt-in |
 | **bi** | Superset SQL workbench that queries as *you* | built, opt-in |
 | **ai** | Live Call Assist and its call simulator | built, opt-in |
 
-`make SCALE=laptop` (the default) runs core, streaming, orchestration and tenants. `make SCALE=full` adds the
+`make SCALE=laptop` (the default) runs core, streaming, corebank, orchestration and tenants. `make SCALE=full` adds the
 rest. Memory numbers for each are in [scale](scale.md#the-machine-it-runs-on-today-laptop-scale).
 
 ## A stack per use case
 
-Today `make up` starts one fixed set. The direction (**next**) is that a *use case* picks its own stack:
+A stack is a list of blueprints. Today you pick it with `PROFILES`, and it already works:
+
+```
+make up                                                  # the bank demo: everything the laptop set has
+make up PROFILES="streaming orchestration tenants"        # markets only: no CDC, no bank schedules
+```
+
+Measured on a 10 GB Docker VM: the markets-only stack used 4.7 to 4.9 GiB of containers, against 6.4 GiB
+with `corebank`, and `make verify` passes on both (24 checks without the bank, 57 with it).
+
+The direction (**next**) is that a *use case* picks its own stack by name, from what its tenant file declares:
 
 ```
 make up USE=markets-data          # core + what markets-data declared it needs. No banking, no AI.

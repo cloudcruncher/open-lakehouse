@@ -26,6 +26,11 @@ expect_contains "OPA policy unit tests" "$out" "PASS:"
 out=$(cd services/platform && uv run --quiet pytest -q 2>&1)
 expect_contains "gateway unit tests" "$out" "passed"
 
+# Everything from here to the canary block reads core-banking data (customers, transactions, audit
+# of agent lookups), so it runs only with the corebank blueprint. A stack that only runs tenants
+# (ADR 15) still gets platform health, tenant onboarding, the canary and orchestration checks.
+BANK=false; running cdc-connect && BANK=true
+if $BANK; then
 echo "▸ Row-level security (brand scoping)"
 q="SELECT array_join(array_sort(array_agg(DISTINCT brand)), ',') FROM lakehouse.gold.customer_360"
 expect_contains "alice (contact centre) sees Meridian only" "$(last "$(sql alice "$q")")" "^Meridian$"
@@ -80,7 +85,8 @@ expect_contains "gold row count equals silver customers" \
 expect_contains "gold refreshed within 24h" \
   "$(last "$(sql ops_admin "SELECT max(refreshed_at) > current_timestamp - INTERVAL '1' DAY FROM lakehouse.gold.customer_360")")" "^True$"
 
-echo "▸ Data contracts (governance as code)"
+fi
+
 # The canary tenant (ADR 14) goes through the real path: its code server writes as its own
 # identity, then each colleague reads it through Trino + OPA. Runs before the contracts check,
 # which compares its live table with contracts/canary.odcs.yaml.
@@ -96,8 +102,12 @@ if [[ -n "$("${DC[@]}" --profile tenant-code ps -q --status running tenant-canar
     "$(last "$(sql alice "SELECT count(*) FROM lakehouse.canary_data.people")")" "^5$"
 fi
 
-expect_contains "contracts valid (ODCS), policy tags agree with OPA, live tables match" \
-  "$(uv run --quiet contracts/check.py --live 2>&1)" ": OK$"
+# --live compares every contract with its running table, including core banking's.
+if $BANK; then
+  echo "▸ Data contracts (governance as code)"
+  expect_contains "contracts valid (ODCS), policy tags agree with OPA, live tables match" \
+    "$(uv run --quiet contracts/check.py --live 2>&1)" ": OK$"
+fi
 
 if running kafka; then
   echo "▸ Tenant onboarding (ADR 14)"
@@ -184,6 +194,16 @@ q = "{workspaceOrError{... on Workspace{locationEntries{name locationOrLoadError
 r = json.load(u.urlopen(u.Request("http://localhost:3000/graphql", json.dumps({"query": q}).encode(), {"Content-Type": "application/json"})))
 print(",".join(sorted(e["name"] for e in r["data"]["workspaceOrError"]["locationEntries"] if e["locationOrLoadError"]["__typename"] == "RepositoryLocation")))' 2>&1 | tail -1)
   expect_contains "Dagster: platform and tenant code locations load (canary, markets-data)" "$out" "^canary,lakehouse,markets-data$"
+  if ! $BANK; then
+    # Without corebank the platform's bank schedules are declared but stopped (ADR 15); maintenance runs.
+    out=$("${DC[@]}" exec -T dagster-webserver python3 -c '
+import json, urllib.request as u
+q = "{workspaceOrError{... on Workspace{locationEntries{name locationOrLoadError{... on RepositoryLocation{repositories{schedules{name scheduleState{status}}}}}}}}}"
+r = json.load(u.urlopen(u.Request("http://localhost:3000/graphql", json.dumps({"query": q}).encode(), {"Content-Type": "application/json"})))
+print(",".join(sorted(s["name"] + "=" + s["scheduleState"]["status"] for e in r["data"]["workspaceOrError"]["locationEntries"] if e["name"] == "lakehouse" for repo in e["locationOrLoadError"]["repositories"] for s in repo["schedules"])))' 2>&1 | tail -1)
+    expect_contains "Dagster: without corebank the bank schedules are stopped and maintenance still runs" "$out" \
+      "^gold_refresh_schedule=STOPPED,maintenance_job_schedule=RUNNING,nightly_refresh=STOPPED$"
+  fi
   # One run at a time: a run whose worker died but stays STARTED would hold the only slot and queue
   # every schedule behind it (29 Sep 2026: markets gold stayed empty). max_runtime_seconds fails it.
   expect_contains "Dagster: run monitoring caps a run's runtime (a dead worker cannot block the queue)" \

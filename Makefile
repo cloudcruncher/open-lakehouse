@@ -1,19 +1,21 @@
 SHELL := /bin/bash
 # Blueprints (docs/scale.md): the governed core always runs; pick the rest. SCALE picks a default
 # set and tells tenants the platform's size (PLATFORM_SCALE). A laptop (SCALE=laptop, the
-# default) runs core + streaming + orchestration + tenants; SCALE=full adds every console and
-# the AI demo. Any set: `make up PROFILES="streaming orchestration bi"`; core only: `PROFILES=`.
+# default) runs core + streaming + corebank + orchestration + tenants; SCALE=full adds every console
+# and the AI demo. Any set: `make up PROFILES="streaming orchestration bi"`; core only: `PROFILES=`.
+# Tenants that don't need core banking leave `corebank` out: `make up PROFILES="streaming orchestration tenants"`.
 SCALE ?= laptop
-BLUEPRINTS_laptop := streaming orchestration tenants
-BLUEPRINTS_full := streaming orchestration tenants observability lineage bi ai
+BLUEPRINTS_laptop := streaming corebank orchestration tenants
+BLUEPRINTS_full := streaming corebank orchestration tenants observability lineage bi ai
 PROFILES ?= $(BLUEPRINTS_$(SCALE))
 export PLATFORM_SCALE := $(SCALE)
+export COREBANK_ENABLED := $(if $(filter corebank,$(PROFILES)),1,0)
 ifeq ($(filter laptop full,$(SCALE)),)
 $(error SCALE=$(SCALE): expected laptop or full)
 endif
-ifneq ($(filter ai observability,$(PROFILES)),)
+ifneq ($(filter ai observability corebank,$(PROFILES)),)
 ifeq ($(filter streaming,$(PROFILES)),)
-$(error the ai and observability blueprints read Kafka: add streaming to PROFILES)
+$(error the ai, observability and corebank blueprints read Kafka: add streaming to PROFILES)
 endif
 endif
 # `tenants` is a switch for `make up`, not a Compose profile passed on every command.

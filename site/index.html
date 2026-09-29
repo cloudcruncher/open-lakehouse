@@ -409,7 +409,7 @@ make sql U=carol Q="SELECT * FROM lakehouse.silver.accounts"  <span class="c"># 
             <tr><td><b>core</b></td><td>Postgres, object storage, Polaris, Keycloak, OPA, Trino, MCP gateway. Always on, so identity, policy and audit are never optional.</td><td class="res">built</td></tr>
             <tr><td><b>streaming</b></td><td>Kafka and the tenant reconciler</td><td class="res">built</td></tr>
             <tr><td><b>orchestration</b></td><td>Dagster, one code server per tenant</td><td class="res">built</td></tr>
-            <tr><td><b>corebank</b></td><td>Change capture, seed data and the core-banking pipelines. Today bundled inside streaming.</td><td><span class="chip">next</span></td></tr>
+            <tr><td><b>corebank</b></td><td>Change data capture (Debezium and the CDC stream) and the bank's topics. Leave it out and a markets-only stack uses 4.7 GiB instead of 6.4.</td><td class="res">built</td></tr>
             <tr><td><b>observability · lineage · bi · ai</b></td><td>Grafana and Prometheus, Marquez, the SQL workbench, Live Call Assist</td><td class="res">built, opt-in</td></tr>
           </tbody>
         </table>

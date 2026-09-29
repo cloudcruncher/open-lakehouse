@@ -396,8 +396,9 @@ services:
       start_period: 15s
     mem_limit: 768m
 
+  # Only the bank's and the assistant's topics; tenants get theirs from tenant-reconcile.
   kafka-init:
-    profiles: [streaming]
+    profiles: [corebank, ai]
     image: apache/kafka:4.3.1
     restart: "no"
     logging: *logging
@@ -425,7 +426,7 @@ services:
     logging: *logging
     networks: [data, edge, stream]
     depends_on:
-      kafka-init: { condition: service_completed_successfully }
+      kafka: { condition: service_healthy }
       polaris-init: { condition: service_completed_successfully }
       keycloak-reconcile: { condition: service_completed_successfully }
     environment:
@@ -592,7 +593,7 @@ services:
 
   cdc-connect:
     <<: *service
-    profiles: [streaming]
+    profiles: [corebank]
     image: quay.io/debezium/connect:3.6.3.Final
     # stream: publishes to Kafka. meta: reads the source's WAL. Nothing else.
     networks: [stream, meta]
@@ -626,7 +627,7 @@ services:
     mem_limit: 768m
 
   cdc-init:
-    profiles: [streaming]
+    profiles: [corebank]
     image: open-lakehouse/platform:dev
     build: ./services/platform
     restart: "no"
@@ -637,7 +638,7 @@ services:
 
   cdc-stream:
     <<: *service
-    profiles: [streaming]
+    profiles: [corebank]
     build: ./jobs/spark
     image: open-lakehouse/spark:dev
     networks: [data, stream, meta]   # meta: report silver to Dagster
@@ -832,6 +833,8 @@ services:
       AWS_REGION: us-east-1
       SPARK_DRIVER_MEMORY: 1280m
       OPENLINEAGE_URL: http://marquez:5000
+      # The core-banking schedules only run when that blueprint is on (make sets it from PROFILES).
+      COREBANK_ENABLED: ${COREBANK_ENABLED:-1}
     volumes:
       - ./services/orchestrator/dagster.yaml:/opt/dagster/home/dagster.yaml:ro
       - platform-secrets:/run/platform-secrets:ro

@@ -19,6 +19,7 @@ alertable, not discovered by a colleague on a call.
 """
 
 import json
+import os
 import time
 import urllib.parse
 import urllib.request
@@ -268,11 +269,19 @@ gold_refresh = dg.define_asset_job(
 
 BRONZE_AND_GOLD = dg.AssetSelection.groups("bronze", "data_products")
 
+# The platform's own schedules exist for core banking. Without that blueprint (a stack that only
+# runs tenants, ADR 15) there is nothing to refresh, so they are declared but stopped; maintenance
+# still compacts whatever tables exist. `make up` sets COREBANK_ENABLED from PROFILES.
+COREBANK_ON = os.environ.get("COREBANK_ENABLED", "1") != "0"
+BANK_SCHEDULE_STATUS = (
+    dg.DefaultScheduleStatus.RUNNING if COREBANK_ON else dg.DefaultScheduleStatus.STOPPED
+)
+
 
 @dg.schedule(
     cron_schedule="0 2 * * *",
     target=dg.AssetSelection.groups("bronze", "silver", "data_products"),
-    default_status=dg.DefaultScheduleStatus.RUNNING,
+    default_status=BANK_SCHEDULE_STATUS,
 )
 def nightly_refresh(context: dg.ScheduleEvaluationContext):
     """Backfill bronze, then silver unless the stream owns it, then rebuild gold."""
@@ -294,7 +303,7 @@ defs = dg.Definitions(
         dg.ScheduleDefinition(
             job=gold_refresh,
             cron_schedule="*/30 * * * *",
-            default_status=dg.DefaultScheduleStatus.RUNNING,
+            default_status=BANK_SCHEDULE_STATUS,
         ),
         nightly_refresh,
         dg.ScheduleDefinition(
