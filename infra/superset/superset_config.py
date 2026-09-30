@@ -42,7 +42,9 @@ OAUTH_PROVIDERS = [
 ]
 
 # Who may administer Superset. Data access is not decided here: Trino and OPA decide that
-# per colleague, whatever their Superset role.
+# per colleague, whatever their Superset role. So every colleague may build (Alpha: register
+# datasets, make charts and dashboards; tenant teams own their analytics, ADR 14) without that
+# widening what any chart returns: a table a colleague may not read fails at Trino for them.
 ADMINS = {"ops_admin"}
 
 
@@ -59,7 +61,7 @@ CUSTOM_SECURITY_MANAGER = BankSecurityManager
 AUTH_USER_REGISTRATION = True
 AUTH_USER_REGISTRATION_ROLE = "Gamma"
 AUTH_ROLES_SYNC_AT_LOGIN = True
-AUTH_ROLES_MAPPING = {"admin": ["Admin"], "colleague": ["Gamma", "sql_lab"]}
+AUTH_ROLES_MAPPING = {"admin": ["Admin"], "colleague": ["Alpha", "sql_lab"]}
 
 
 def FLASK_APP_MUTATOR(app):  # noqa: N802 - name set by Superset

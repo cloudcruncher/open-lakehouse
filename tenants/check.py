@@ -76,6 +76,16 @@ def check_one(path: Path, t: dict) -> list[str]:
         errors.append(f"{path.name}: secret '{dup}' is declared twice")
     if "polaris" in secrets:
         errors.append(f"{path.name}: secret name 'polaris' is taken by the platform's credentials")
+    topics = {topic["name"] for topic in t["topics"]}
+    for obs in t.get("observe", []):
+        namespace = obs["table"].split(".", 1)[0]
+        if namespace not in t["namespaces"]:
+            errors.append(f"{path.name}: observed table {obs['table']} is not in one of the tenant's namespaces")
+        if "topic" in obs and obs["topic"] not in topics:
+            errors.append(
+                f"{path.name}: observed table {obs['table']} names topic {obs['topic']}, "
+                "which the tenant does not declare"
+            )
     for svc in t.get("services", []):
         for name in svc.get("secrets", []):
             if name not in secrets:

@@ -57,7 +57,7 @@ flowchart LR
 ## Quickstart
 
 ```bash
-make demo        # secrets → platform (all profiles) → synthetic bank → batch + streaming → 70 checks
+make demo        # secrets → platform (all profiles) → synthetic bank → batch + streaming → 73 checks
 make call        # a live call, headless: caller → transcript → agent → governed data → guidance
 make live-demo   # all five demo calls (watch them at http://localhost:8090, sign in as alice)
 make chaos       # kill -9 every component; watch it fail safe and heal itself

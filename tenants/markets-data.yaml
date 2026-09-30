@@ -30,6 +30,16 @@ namespaces:
   - markets_bronze
   - markets_silver
   - markets_gold
+# Drawn on the platform's Tenant streams dashboard (freshness, records, and lag where a topic is named).
+observe:
+  - { table: markets_bronze.trades, topic: markets.coinbase.trades }
+  - { table: markets_bronze.card_auths, topic: markets.payments.card-auths }
+  - { table: markets_silver.trades }
+  - { table: markets_silver.card_auths }
+  - { table: markets_bronze.fx_rates }
+  - { table: markets_gold.crypto_ohlcv_1m }
+  - { table: markets_gold.card_auth_daily }
+  - { table: markets_gold.sanctions_hits }
 secrets:
   - name: shadowtraffic
     description: ShadowTraffic licence (env file from shadowtraffic.io) for the card-authorisation generator.
