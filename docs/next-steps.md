@@ -85,6 +85,9 @@ SCALE=laptop|full`, `PLATFORM_SCALE` passed to tenants (markets-data 0.8.0 runs 
 5-minute `availableNow` catch-ups on a laptop), Docker at 8 CPUs / 10 GB, and the tenant budget back
 to 4608 MB (4096 in use; markets-data 0.8.0 with gold and one streams app). PRs run the laptop set in
 e2e, `main` and the weekly run the full one.
+Step 1.9 (30 Sep 2026): markets-data 0.9.0 is deployed and silver trades was cut over on this stack:
+replay into `trades_v2`, compare identical (165,715 trades), swap by rename, the stream wrote on into the new
+table (165,729 trades, `notional` on every row, no duplicates), and gold rebuilt from it.
 
 ### Backlog to pick up (saved 27 Sep 2026, in order)
 1. ~~Budget for 1.6 part 3~~ done 28 Sep 2026 (trim code server to 1024, budget 5376).
