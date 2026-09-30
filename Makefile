@@ -86,6 +86,9 @@ tenant-secret: ## Store a tenant's secret from an env file, never printed: make 
 canary: ## Run the canary tenant's pipeline in its own code server, as its own identity (ADR 14)
 	$(COMPOSE) --profile tenant-code exec -T tenant-canary-code dagster asset materialize -m canary_tenant.definitions --select canary_data/people
 
+canary-self-service: ## The canary creates, renames and drops tables and views in its own namespace
+	$(COMPOSE) --profile tenant-code exec -T tenant-canary-code dagster asset materialize -m canary_tenant.definitions --select canary_data/self_service
+
 mem: ## Memory per container against its limit, and the total against Docker's (ADR 14)
 	@scripts/mem.sh
 
@@ -146,4 +149,4 @@ stop: ## Stop and remove only these blueprints, e.g. make stop BLUEPRINTS="bi li
 destroy: ## Stop and DELETE all data volumes (asks first)
 	@read -p "Delete ALL lakehouse data volumes? [y/N] " a && [[ $$a == y ]] && $(ALL) down -v
 
-.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts tenants tenants-apply tenants-render tenant-secret canary mem chaos heal test lint dashboards sql agent urls down stop destroy
+.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts tenants tenants-apply tenants-render tenant-secret canary canary-self-service mem chaos heal test lint dashboards sql agent urls down stop destroy

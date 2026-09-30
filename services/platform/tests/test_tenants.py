@@ -111,3 +111,13 @@ def test_kafka_state_reads_partitions_and_configs():
     admin = FakeAdmin({"markets.trades": (3, WEEK), "other": (1, {})})
     state = asyncio.run(kafka_state(admin, ["markets.trades", "markets.missing"]))
     assert state == {"markets.trades": TopicState(3, WEEK)}
+
+
+def test_tenant_writer_can_create_rename_and_drop_in_its_own_namespaces():
+    from lakehouse_platform.bootstrap.tenants import TENANT_WRITER_PRIVILEGES as granted
+
+    # Tables and views: create, rename, drop (what a Kappa replay swap and a scratch table need).
+    assert {"TABLE_FULL_METADATA", "VIEW_CREATE", "VIEW_FULL_METADATA"} <= set(granted)
+    # Never the namespace itself: dropping it stays a platform decision.
+    assert "NAMESPACE_FULL_METADATA" not in granted
+    assert "CATALOG_MANAGE_CONTENT" not in granted

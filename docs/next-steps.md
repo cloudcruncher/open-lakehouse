@@ -91,11 +91,18 @@ e2e, `main` and the weekly run the full one.
 2. ~~1.6 part 3~~ done 28 Sep 2026 (markets-data 0.5.0: card auths to bronze, silver by MERGE, DLQ, EUR).
 3. ~~1.7 sanctions~~ done (0.6.0: FCDO list via OpenSanctions, merchants screened).
 4. ~~1.8 gold~~ done (0.7.0: `crypto_ohlcv_1m`, `card_auth_daily`, `sanctions_hits`; 0.8.0 adds `PLATFORM_SCALE`).
-5. **1.9** (next) Kappa replay demo (`trades_v2`, compare, swap a view). **1.10** dashboards (Superset
-   on gold, Grafana stream lag and freshness).
+5. ~~1.9~~ done 30 Sep 2026 (markets-data 0.9.0: `make replay`, `replay-compare`, `replay-swap` by renaming;
+   see its README). Making it work exposed tenant-enablement gaps, now closed: tenants get view privileges,
+   the catalog allows drop-with-purge (Spark's DROP always purges), and the canary proves create, rename and
+   drop in `verify` (70 checks). **1.10** (next) dashboards (Superset on gold, Grafana stream lag and freshness).
 6. Then `lakehouse-ai-desk`, `lakehouse-risk-signals`, phase 2 (corebank out of this repo).
 
 Smaller, when convenient:
+- Tenant self-service gaps found on 30 Sep 2026 (a tenant should need no platform help): (a) a tenant cannot
+  query through Trino as itself (no Keycloak identity), so its own checks use Spark; (b) Trino refuses Spark-dialect
+  views and OPA denies view creation, so tenants share tables, not views; (c) a tenant cannot stop or restart
+  its own service (cutovers need `docker compose stop` by the platform); (d) every image bump is a platform PR.
+  Decide which of these the tenant contract should promise.
 - Blueprint slice 1 done (ADR 15): `corebank` is its own blueprint. Next: `blueprints:` in the tenant file,
   per-tenant Compose profiles and `make up USE=...` (slice 2), then the time-to-first-data target (slice 3).
   `make urls` still prints every portal, running or not.

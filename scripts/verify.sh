@@ -94,6 +94,8 @@ if [[ -n "$("${DC[@]}" --profile tenant-code ps -q --status running tenant-canar
   echo "▸ Canary tenant (ADR 14)"
   expect_contains "canary code server writes canary_data.people as its own identity" \
     "$(make --no-print-directory canary 2>&1)" "RUN_SUCCESS"
+  expect_contains "canary tenant creates, renames and drops its own tables and views (no platform help)" \
+    "$(make --no-print-directory canary-self-service 2>&1)" "RUN_SUCCESS"
   q="SELECT coalesce(email, 'NULL') || ' ' || name FROM lakehouse.canary_data.people WHERE person_id = 1"
   expect_contains "canary: bob (full PII) sees the email" "$(last "$(sql bob "$q")")" "^ada@canary.example Ada Canary$"
   expect_contains "canary: alice (partial PII) sees it masked" "$(last "$(sql alice "$q")")" '^a\*\*\*@canary.example Ada Canary$'

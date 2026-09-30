@@ -36,9 +36,11 @@ KEYCLOAK_URL = os.environ.get("KEYCLOAK_URL", "http://keycloak:8080")
 KEYCLOAK_REALM = os.environ.get("KEYCLOAK_REALM", "bank")
 PLATFORM_TOPIC_PREFIXES = ("corebank.", "contact-centre.")
 
-# Inside its own namespaces a tenant manages tables and namespace properties (leases such as
-# the silver writer lease). NAMESPACE_FULL_METADATA is withheld: it includes dropping the
-# namespace, which stays a platform decision.
+# Inside its own namespaces a tenant manages tables, views and namespace properties (leases such as
+# the silver writer lease): create, rename, drop, without asking the platform. Views written by
+# Spark use Spark's SQL dialect, which Trino refuses to read, so a tenant's shared interface is a
+# table (a replay swap is two renames). NAMESPACE_FULL_METADATA is withheld: it includes dropping
+# the namespace, which stays a platform decision.
 TENANT_WRITER_PRIVILEGES = [
     "NAMESPACE_LIST",
     "NAMESPACE_READ_PROPERTIES",
@@ -46,6 +48,8 @@ TENANT_WRITER_PRIVILEGES = [
     "TABLE_FULL_METADATA",
     "TABLE_READ_DATA",
     "TABLE_WRITE_DATA",
+    "VIEW_CREATE",
+    "VIEW_FULL_METADATA",
     "VIEW_LIST",
     "VIEW_READ_PROPERTIES",
 ]

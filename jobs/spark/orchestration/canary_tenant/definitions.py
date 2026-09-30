@@ -12,6 +12,7 @@ from pathlib import Path
 import dagster as dg
 
 SEED = Path(__file__).with_name("seed.py")
+SELF_SERVICE = Path(__file__).with_name("self_service.py")
 
 
 def tenant_credentials() -> dict[str, str]:
@@ -44,4 +45,26 @@ def people(context: dg.AssetExecutionContext, pipes: dg.PipesSubprocessClient):
     ).get_materialize_result()
 
 
-defs = dg.Definitions(assets=[people], resources={"pipes": dg.PipesSubprocessClient()})
+@dg.asset(
+    key=["canary_data", "self_service"],
+    owners=["team:canary"],
+    kinds={"spark", "iceberg"},
+    description="Proves the tenant can create, rename and drop tables and views in its own namespace "
+    "(scratch objects, removed at the end).",
+)
+def self_service(context: dg.AssetExecutionContext, pipes: dg.PipesSubprocessClient):
+    return pipes.run(
+        command=[
+            "/opt/spark/bin/spark-submit",
+            "--master", "local[1]",
+            "--driver-memory", "512m",
+            "--conf", "spark.ui.showConsoleProgress=false",
+            "--py-files", "/opt/pipelines/common.py",
+            str(SELF_SERVICE),
+        ],
+        context=context,
+        env=tenant_credentials(),
+    ).get_materialize_result()
+
+
+defs = dg.Definitions(assets=[people, self_service], resources={"pipes": dg.PipesSubprocessClient()})
