@@ -62,6 +62,8 @@ class Engine:
 ENGINES = [
     Engine("spark_etl", "etl_pipelines", "lakehouse_writer", "SPARK_POLARIS"),
     Engine("trino_query_engine", "query_engines", "lakehouse_reader", "TRINO_POLARIS"),
+    # tenant-metrics reads table metadata (commit times, record counts) for the Tenant streams dashboard.
+    Engine("platform_metrics", "metrics_readers", "lakehouse_reader", "METRICS_POLARIS"),
 ]
 
 

@@ -730,6 +730,23 @@ services:
     command: ["--kafka.server=kafka:9092", "--kafka.version=3.9.0"]
     mem_limit: 128m
 
+  # Freshness and lag of every tenant's observed tables (their `observe:` lists), read from Polaris
+  # table metadata as a read-only principal and from Kafka log ends; no Spark, no data access.
+  tenant-metrics:
+    <<: *service
+    profiles: [observability]
+    build: ./services/platform
+    image: open-lakehouse/platform:dev
+    entrypoint: ["tenant-metrics"]
+    networks: [data, stream]
+    depends_on:
+      kafka: { condition: service_healthy }
+      polaris-init: { condition: service_completed_successfully }
+    volumes:
+      - ./tenants:/etc/tenants:ro
+      - platform-secrets:/run/platform-secrets:ro
+    mem_limit: 128m
+
   # ================================================ observability (profile: ops)
   postgres-exporter:
     <<: *service

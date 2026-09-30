@@ -23,6 +23,7 @@ dependencies = [
 polaris-bootstrap = "lakehouse_platform.bootstrap.polaris:main"
 keycloak-reconcile = "lakehouse_platform.bootstrap.keycloak:main"
 tenant-reconcile = "lakehouse_platform.bootstrap.tenants:main"
+tenant-metrics = "lakehouse_platform.tenant_metrics:main"
 cdc-connector = "lakehouse_platform.bootstrap.cdc:main"
 seed-corebank = "lakehouse_platform.seed.corebank:main"
 mcp-gateway = "lakehouse_platform.mcp_server.server:main"

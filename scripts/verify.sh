@@ -166,16 +166,33 @@ fi
 
 if running prometheus; then
   echo "▸ Observability (SLOs as code)"
-  down=$(curl -fsS localhost:9090/api/v1/query --data-urlencode 'query=count(up == 0) or vector(0)' | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["result"][0]["value"][1])')
+  # Targets of blueprints that are not running (core banking's CDC stream, Live Call Assist) are not expected up.
+  skip="none"
+  $BANK || skip+="|cdc-stream"
+  running call-assist || skip+="|call-assist"
+  down=$(curl -fsS localhost:9090/api/v1/query --data-urlencode "query=count(up{job!~\"$skip\"} == 0) or vector(0)" | python3 -c 'import sys,json; print(json.load(sys.stdin)["data"]["result"][0]["value"][1])')
   [[ "$down" == 0 ]] && ok "every scrape target up (incl. Trino via machine identity + OPA)" || bad "every scrape target up" "$down down"
   n=$(curl -fsS localhost:9090/api/v1/rules | python3 -c 'import sys,json; print(sum(len(g["rules"]) for g in json.load(sys.stdin)["data"]["groups"]))')
   (( n >= 20 )) && ok "SLO recording + burn-rate alert rules loaded ($n)" || bad "SLO rules loaded" "$n"
-  cap=$(curl -fsS localhost:9090/api/v1/query --data-urlencode 'query=max(assist_llm_budget_usd)' | python3 -c 'import sys,json; r=json.load(sys.stdin)["data"]["result"]; print(r[0]["value"][1] if r else "none")')
-  rules=$(curl -fsS localhost:9090/api/v1/rules | grep -c AssistAIBudgetNearlySpent)
-  [[ "$cap" != none && "$rules" -ge 1 ]] && ok "AI spend cap exported and alerted on (cap \$$cap/day)" || bad "AI spend cap exported and alerted on" "cap=$cap rule=$rules"
+  if running call-assist; then
+    cap=$(curl -fsS localhost:9090/api/v1/query --data-urlencode 'query=max(assist_llm_budget_usd)' | python3 -c 'import sys,json; r=json.load(sys.stdin)["data"]["result"]; print(r[0]["value"][1] if r else "none")')
+    rules=$(curl -fsS localhost:9090/api/v1/rules | grep -c AssistAIBudgetNearlySpent)
+    [[ "$cap" != none && "$rules" -ge 1 ]] && ok "AI spend cap exported and alerted on (cap \$$cap/day)" || bad "AI spend cap exported and alerted on" "cap=$cap rule=$rules"
+  fi
   gpw=$(grep '^GRAFANA_ADMIN_PASSWORD=' .env | cut -d= -f2)
   n=$(curl -fsS -u "admin:$gpw" "localhost:3001/api/search?tag=open-lakehouse" | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')
   (( n >= 3 )) && ok "Grafana dashboards provisioned from code ($n)" || bad "Grafana dashboards provisioned" "$n"
+  if running tenant-metrics; then
+    prom() { curl -fsS localhost:9090/api/v1/query --data-urlencode "query=$1" | python3 -c 'import sys,json; r=json.load(sys.stdin)["data"]["result"]; print(r[0]["value"][1] if r else "none")'; }
+    # tenant-metrics refreshes every 30 s and Prometheus scrapes every 15 s: allow the first round.
+    for _ in $(seq 1 20); do seen=$(prom 'count(tenant_table_observed == 1)'); [[ "$seen" != none ]] && break; sleep 3; done
+    unseen=$(prom 'count(tenant_table_observed == 0) or vector(0)')
+    [[ "$seen" != none && "$unseen" == 0 ]] && ok "platform observes every table tenants declare under observe: ($seen)" || bad "platform observes every declared table" "seen=$seen unreadable=$unseen"
+    dup=$(prom 'count(tenant_table_lag_records < 0) or vector(0)')
+    [[ "$dup" == 0 ]] && ok "no tenant table mirrors more records than its topic holds (no duplicates)" || bad "no tenant table holds duplicates" "$dup table(s) hold more records than their topic"
+    n=$(curl -fsS -u "admin:$gpw" "localhost:3001/api/search?query=Tenant%20streams" | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')
+    (( n >= 1 )) && ok "Grafana: Tenant streams dashboard provisioned" || bad "Grafana: Tenant streams dashboard provisioned" "$n"
+  fi
   code=$(curl -s -o /dev/null -w '%{http_code}' localhost:3002/)
   [[ "$code" == 302 || "$code" == 403 ]] && ok "Dagster UI requires SSO (HTTP $code without a session)" || bad "Dagster UI requires SSO" "HTTP $code"
 fi

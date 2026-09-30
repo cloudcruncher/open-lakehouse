@@ -119,6 +119,20 @@
           "description": { "type": "string", "minLength": 10 }
         }
       }
+    },
+    "observe": {
+      "description": "Tables the platform watches and draws on its Tenant streams dashboard: minutes since the last commit, and records. Give `topic` for a table that appends every record of that topic (bronze): the platform then shows how many records the table is behind it.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["table"],
+        "properties": {
+          "table": { "description": "<namespace>.<table>, in one of the tenant's own namespaces.", "type": "string", "pattern": "^[a-z][a-z0-9]*_[a-z0-9_]+\\.[a-z][a-z0-9_]*$" },
+          "topic": { "description": "One of the tenant's own topics; the table must append its records one for one.", "type": "string" }
+        }
+      }
     }
   }
 }

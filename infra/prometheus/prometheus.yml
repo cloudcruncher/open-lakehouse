@@ -46,6 +46,9 @@ scrape_configs:
   - job_name: postgres
     static_configs: [{ targets: ["postgres-exporter:9187"] }]
 
+  - job_name: tenant-metrics
+    static_configs: [{ targets: ["tenant-metrics:9109"] }]
+
   - job_name: kafka
     static_configs: [{ targets: ["kafka-exporter:9308"] }]
 

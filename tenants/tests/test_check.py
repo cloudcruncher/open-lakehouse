@@ -141,3 +141,20 @@ def test_the_polaris_secret_name_is_the_platforms(tmp_path):
         lambda t: t.update(secrets=[{"name": "polaris", "description": "Try to overwrite it."}]),
     )
     assert any("'polaris' is taken" in e for e in errors)
+
+
+def test_observed_table_must_be_in_the_tenants_namespaces(tmp_path):
+    errs = errors_for(tmp_path, lambda t: t.update(observe=[{"table": "payments_gold.sales"}]))
+    assert any("payments_gold.sales is not in one of the tenant's namespaces" in e for e in errs), errs
+
+
+def test_observed_topic_must_be_the_tenants_own(tmp_path):
+    errs = errors_for(
+        tmp_path, lambda t: t.update(observe=[{"table": "markets_bronze.trades", "topic": "corebank.core.customers"}])
+    )
+    assert any("names topic corebank.core.customers" in e for e in errs), errs
+
+
+def test_observe_entry_needs_a_qualified_table(tmp_path):
+    errs = errors_for(tmp_path, lambda t: t.update(observe=[{"table": "trades"}]))
+    assert errs, "a table without its namespace must fail the schema"

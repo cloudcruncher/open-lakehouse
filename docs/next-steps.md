@@ -97,10 +97,18 @@ table (165,729 trades, `notional` on every row, no duplicates), and gold rebuilt
 5. ~~1.9~~ done 30 Sep 2026 (markets-data 0.9.0: `make replay`, `replay-compare`, `replay-swap` by renaming;
    see its README). Making it work exposed tenant-enablement gaps, now closed: tenants get view privileges,
    the catalog allows drop-with-purge (Spark's DROP always purges), and the canary proves create, rename and
-   drop in `verify` (70 checks). **1.10** (next) dashboards (Superset on gold, Grafana stream lag and freshness).
+   drop in `verify` (70 checks). **1.10** done 1 Oct 2026 (platform owns observability, tenants own analytics): `observe:` in tenant files,
+   the `tenant-metrics` service, a Tenant streams dashboard, and Superset open to every colleague for building
+   (portal tour steps 22 to 25: carol and alice build on gold, carol is refused silver, ops_admin is not).
 6. Then `lakehouse-ai-desk`, `lakehouse-risk-signals`, phase 2 (corebank out of this repo).
 
 Smaller, when convenient:
+- **Bronze can duplicate** (found by the new lag metric, 30 Sep 2026): a checkpoint that disagrees with the table's
+  offsets makes the bronze `toTable` append records it already holds. `markets_bronze.trades` has ~127k extra rows
+  (from a stale local checkpoint in my own test run) and `markets_bronze.card_auths` ~19.5k (one hour on 28 Sep).
+  Silver is fine (it MERGEs). `make verify` fails "no tenant table mirrors more records than its topic" until bronze
+  is repaired. Repair: keep one row per (kafka_partition, kafka_offset). Fix: write bronze with a MERGE on
+  (partition, offset) instead of an append, in a markets-data release.
 - Tenant self-service gaps found on 30 Sep 2026 (a tenant should need no platform help): (a) a tenant cannot
   query through Trino as itself (no Keycloak identity), so its own checks use Spark; (b) Trino refuses Spark-dialect
   views and OPA denies view creation, so tenants share tables, not views; (c) a tenant cannot stop or restart

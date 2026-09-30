@@ -658,9 +658,115 @@ def ai_usage_panels(y):
     ]
 
 
+def tenants_dashboard():
+    """What the platform sees of every tenant's observed tables (their `observe:` lists),
+    from `tenant-metrics`: read-only, so a team can review its streams without platform help."""
+    minutes = "(time() - tenant_table_last_commit_timestamp_seconds) / 60"
+    d = dashboard(
+        "tenants",
+        "Tenant streams — freshness and lag",
+        [
+            row("Can the platform see the tables?", 0),
+            stat(
+                "Observed tables",
+                "count(tenant_table_observed == 1) or vector(0)",
+                "none",
+                0,
+                1,
+                6,
+                4,
+            ),
+            stat(
+                "Tables the platform cannot read",
+                "count(tenant_table_observed == 0) or vector(0)",
+                "none",
+                6,
+                1,
+                6,
+                4,
+                [{"color": GREEN, "value": None}, {"color": RED, "value": 1}],
+                0,
+            ),
+            stat(
+                "Tables holding more than their topic (duplicates)",
+                "count(tenant_table_lag_records < 0) or vector(0)",
+                "none",
+                12,
+                1,
+                6,
+                4,
+                [{"color": GREEN, "value": None}, {"color": RED, "value": 1}],
+                0,
+            ),
+            stat(
+                "Most records behind a topic",
+                "max(tenant_table_lag_records) or vector(0)",
+                "none",
+                18,
+                1,
+                6,
+                4,
+                [
+                    {"color": GREEN, "value": None},
+                    {"color": AMBER, "value": 5000},
+                    {"color": RED, "value": 50000},
+                ],
+                0,
+            ),
+            row("Freshness: minutes since each table's last commit", 5),
+            ts(
+                "Minutes since last commit, by table",
+                [(minutes, "{{tenant}} · {{table}}")],
+                "m",
+                0,
+                6,
+                24,
+                9,
+                [{"color": GREEN, "value": None}, {"color": AMBER, "value": 10}, {"color": RED, "value": 70}],
+            ),
+            row("Lag and volume", 15),
+            ts(
+                "Records behind the topic (bronze tables that mirror one)",
+                [("tenant_table_lag_records", "{{tenant}} · {{table}}")],
+                "none",
+                0,
+                16,
+                12,
+                8,
+                [{"color": GREEN, "value": None}, {"color": RED, "value": 50000}],
+                soft_max=1000,
+            ),
+            ts(
+                "Records per minute into each topic",
+                [("deriv(tenant_topic_records[10m]) * 60", "{{tenant}} · {{topic}}")],
+                "none",
+                12,
+                16,
+                12,
+                8,
+            ),
+            ts(
+                "Records held by each table",
+                [("tenant_table_records", "{{tenant}} · {{table}}")],
+                "none",
+                0,
+                24,
+                24,
+                8,
+            ),
+        ],
+        "Read by the platform from Polaris table metadata and Kafka log ends, for the tables each tenant "
+        "lists under `observe:`. Streams catch up every 5 minutes at laptop scale and continuously at full "
+        "scale; gold builds hourly and reference data daily, so judge each table against its own cadence.",
+    )
+    d["time"] = {"from": "now-3h", "to": "now"}
+    d["refresh"] = "30s"
+    return d
+
+
 def main() -> None:
     OUT.mkdir(exist_ok=True)
-    for d in (slo_dashboard(), streaming_dashboard(), assist_dashboard()):
+    for d in (slo_dashboard(), streaming_dashboard(), assist_dashboard(), tenants_dashboard()):
         (OUT / f"{d['uid']}.json").write_text(json.dumps(d, indent=1) + "\n")
         print(f"wrote {d['uid']}.json ({len(d['panels'])} panels)")
 

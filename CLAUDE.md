@@ -9,7 +9,7 @@ Live Call Assist. Open work is in [docs/next-steps.md](docs/next-steps.md); read
 - A stack without core banking (tenants only, ADR 15): `make up PROFILES="streaming orchestration tenants"`; `make verify`
   then skips the bank sections. `corebank` is the blueprint with the CDC services.
 - `make stop BLUEPRINTS="bi lineage"`: stop only those blueprints (the reverse of `make up PROFILES=...`).
-- `make verify`: 70 end-to-end checks. Run after any change that touches the running stack.
+- `make verify`: 73 end-to-end checks. Run after any change that touches the running stack.
 - `make test` (OPA + Python unit tests), `make lint`, `make evals`, `make contracts`.
 - Tenant teams (ADR 14): `tenants/*.yaml`, `make tenants` (validate), `make tenants-apply` (reconcile),
   `make mem` (memory per container; tenant code servers are budgeted in `tenants/render.py`).

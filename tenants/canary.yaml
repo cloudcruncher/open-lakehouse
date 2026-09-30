@@ -18,6 +18,8 @@ topics:
     description: Reserved for the canary's streaming checks.
 namespaces:
   - canary_data
+observe:
+  - { table: canary_data.people }
 codeLocation:
   image: open-lakehouse/spark:dev
   module: canary_tenant.definitions

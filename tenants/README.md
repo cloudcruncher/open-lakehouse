@@ -46,6 +46,16 @@ be a table, not a view: a view written by Spark uses Spark's SQL dialect, which 
 and Trino only lets a platform policy create views. A Kappa replay swap is therefore two table renames
 (markets-data's `make replay-swap`).
 
+Observability is the platform's, analytics are the tenant's. List tables under `observe:` in the tenant
+file (add `topic:` for a table that appends every record of one of your topics) and the platform watches
+them: `tenant-metrics` reads commit times and record counts from Polaris table metadata and log-end
+offsets from Kafka (no Spark, no data access), and the **Tenant streams — freshness and lag** dashboard in
+Grafana shows minutes since each table's last commit, records behind the topic, and a red panel if a table
+holds more records than its topic ever had (duplicates). Everyone except platform admins is a read-only
+Grafana viewer. Superset is for building: every colleague may register datasets and make charts and
+dashboards on it (Alpha role); what a chart returns is still decided per colleague by Trino and OPA, so a
+table you may not read is refused or not even visible to you.
+
 Deploying a new image is a PR here that bumps `codeLocation.image` (and sets `deploy: true` the
 first time), then `make tenants-render`: the generated `compose.yaml` block and Dagster's
 `workspace.yaml` change in the same PR, so what runs is reviewed like any other change.

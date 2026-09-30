@@ -166,6 +166,72 @@ def superset(user, path):
     return fn
 
 
+def superset_build(user, schema, table, expect_ok):
+    """Register a table as a dataset, chart it, put it on a dashboard and read it back, as `user`.
+
+    Superset lets colleagues build, but what a chart returns is decided per colleague by Trino and
+    OPA: a table the colleague may not read must fail here, at registration or at query time.
+    """
+
+    def fn(page):
+        base = "http://localhost:3004"
+        page.goto(f"{base}/login/keycloak")
+        kc_login(page, user)
+        time.sleep(4)
+        csrf = page.request.get(f"{base}/api/v1/security/csrf_token/").json()["result"]
+        h = {"X-CSRFToken": csrf, "Referer": f"{base}/", "Content-Type": "application/json"}
+
+        def call(method, path, body=None):
+            r = page.request.fetch(f"{base}{path}", method=method, headers=h, data=json.dumps(body) if body else None)
+            return r.status, (r.json() if r.headers.get("content-type", "").startswith("application/json") else {})
+
+        _, dbs = call("GET", "/api/v1/database/")
+        db = next(d["id"] for d in dbs["result"] if d["database_name"] == "Lakehouse")
+        # A fresh sign-in holds no Trino token: the first query answers with an OAuth2 redirect, which a
+        # colleague's browser follows (Keycloak's session is live, so it comes straight back).
+        _, probe = call(
+            "POST",
+            "/api/v1/sqllab/execute/",
+            {"database_id": db, "sql": "SELECT 1", "runAsync": False, "schema": "", "client_id": f"tour{user}", "queryLimit": 1},
+        )
+        redirect = next((e["extra"]["url"] for e in probe.get("errors", []) if e.get("error_type") == "OAUTH2_REDIRECT"), None)
+        if redirect:
+            page.goto(redirect)
+            time.sleep(6)
+        status, made = call("POST", "/api/v1/dataset/", {"database": db, "schema": schema, "table_name": table})
+        if status == 422 and "already exists" in json.dumps(made):
+            _, found = call("GET", f"/api/v1/dataset/?q=(filters:!((col:table_name,opr:eq,value:{table})))")
+            ds = found["result"][0]["id"]
+        elif status == 201:
+            ds = made["id"]
+        else:
+            if expect_ok:
+                raise AssertionError(f"{user} could not register {schema}.{table}: {status} {json.dumps(made)[:150]}")
+            return f"refused at registration ({status}), as expected: {json.dumps(made)[:110]}"
+        q = {
+            "datasource": {"id": ds, "type": "table"},
+            "queries": [{"columns": [], "metrics": [{"expressionType": "SQL", "sqlExpression": "count(*)", "label": "n"}], "row_limit": 5}],
+            "result_format": "json",
+            "result_type": "full",
+        }
+        status, data = call("POST", "/api/v1/chart/data", q)
+        if not expect_ok:
+            if status == 200 and not data["result"][0].get("error"):
+                raise AssertionError(f"{user} read {schema}.{table} through a chart: it must be refused")
+            return f"refused at query time ({status}), as expected"
+        if status != 200 or data["result"][0].get("error"):
+            raise AssertionError(f"{user}'s chart on {schema}.{table} failed: {status} {json.dumps(data)[:150]}")
+        rows = data["result"][0]["data"]
+        params = json.dumps({"viz_type": "table", "datasource": f"{ds}__table", "metrics": [], "all_columns": []})
+        cs, _ = call("POST", "/api/v1/chart/", {"slice_name": f"tour: {table} as {user}", "viz_type": "table", "datasource_id": ds, "datasource_type": "table", "params": params})
+        ds_, _ = call("POST", "/api/v1/dashboard/", {"dashboard_title": f"tour: {user}'s {schema}", "published": False})
+        if cs not in (201, 422) or ds_ not in (201, 422):
+            raise AssertionError(f"chart {cs} / dashboard {ds_}")
+        return f"built dataset, chart and dashboard; chart returned {rows}"
+
+    return fn
+
+
 def plain(url, wait=3):
     def fn(page):
         r = page.goto(url)
@@ -206,6 +272,10 @@ STEPS = {
     "19-superset-sqllab-alice": superset("alice", "/sqllab/"),
     "20-superset-users-alice": superset("alice", "/users/list/"),
     "21-superset-users-ops": superset("ops_admin", "/users/list/"),
+    "22-superset-build-gold-carol": superset_build("carol", "markets_gold", "card_auth_daily", True),
+    "23-superset-build-gold-alice": superset_build("alice", "markets_gold", "crypto_ohlcv_1m", True),
+    "24-superset-silver-refused-carol": superset_build("carol", "markets_silver", "trades", False),
+    "25-superset-silver-ok-ops": superset_build("ops_admin", "markets_silver", "trades", True),
 }
 
 only = sys.argv[1:]
