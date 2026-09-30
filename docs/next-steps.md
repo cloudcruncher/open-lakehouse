@@ -100,6 +100,14 @@ table (165,729 trades, `notional` on every row, no duplicates), and gold rebuilt
    drop in `verify` (70 checks). **1.10** done 1 Oct 2026 (platform owns observability, tenants own analytics): `observe:` in tenant files,
    the `tenant-metrics` service, a Tenant streams dashboard, and Superset open to every colleague for building
    (portal tour steps 22 to 25: carol and alice build on gold, carol is refused silver, ops_admin is not).
+   **1.11** done 1 Oct 2026: data product pages. The `catalog` service (`localhost:3005`, `bi` blueprint) renders a page per
+   table from its contract (ODCS standard fields: purpose, grain, freshness promise, quality checks, upstream,
+   code link, column meanings) joined with live freshness (Prometheus) and Dagster builds and check results, plus
+   who sees what per persona. Tenants ship contracts in their image at `/contracts` (`make catalog-sync`). Its first
+   finding was a real bug: gold VWAP fell outside [low, high] for single-price minutes (decimal precision in
+   `price * size`); fixed in markets-data with a failing sample first, backfilled with `GOLD_REBUILD_DAYS`.
+   Until markets-data 0.10.0 is deployed the platform's hourly gold run still uses the old SQL, so `make verify`
+   shows "a gold product check is failing". No login on the catalog yet (metadata only).
 6. Then `lakehouse-ai-desk`, `lakehouse-risk-signals`, phase 2 (corebank out of this repo).
 
 Smaller, when convenient:

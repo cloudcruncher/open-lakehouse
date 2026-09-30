@@ -37,6 +37,8 @@ observe:
   - { table: markets_silver.trades }
   - { table: markets_silver.card_auths }
   - { table: markets_bronze.fx_rates }
+  - { table: markets_bronze.sanctions_targets }
+  - { table: markets_silver.sanctions_names }
   - { table: markets_gold.crypto_ohlcv_1m }
   - { table: markets_gold.card_auth_daily }
   - { table: markets_gold.sanctions_hits }

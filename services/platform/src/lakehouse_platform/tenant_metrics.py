@@ -16,6 +16,7 @@ Metrics (one sample per observed table, labelled tenant and table):
                                               table filled from the topic's first record, and
                                               negative if the table holds duplicates
   tenant_table_observed{tenant, table}        1 if the table could be read, 0 if not
+  tenant_table_exists{tenant, table}          0 if the catalog has no such table yet (its job has not run)
 """
 
 from __future__ import annotations
@@ -61,6 +62,7 @@ class Sample:
     commit_timestamp: float | None = None
     records: int | None = None
     topic_records: int | None = None
+    exists: bool = True  # False only when the catalog says the table is not there (yet)
 
     @property
     def lag(self) -> int | None:
@@ -105,9 +107,10 @@ def collect(
             metadata = load_table(o.table)
         except Exception as exc:  # noqa: BLE001 - network, auth, catalog errors: report the table unobserved
             log.warning("%s: cannot read %s: %s", o.tenant, o.table, exc)
-            metadata = None
-        if metadata is None:
-            samples.append(Sample(o.tenant, o.table, o.topic, observed=False))
+            samples.append(Sample(o.tenant, o.table, o.topic, observed=False))  # exists, but unreadable
+            continue
+        if metadata is None:  # the catalog has no such table: a job that has not run yet
+            samples.append(Sample(o.tenant, o.table, o.topic, observed=False, exists=False))
             continue
         ts, records = snapshot_facts(metadata)
         total = None
@@ -143,6 +146,11 @@ class Collector:
             "1 if the platform could read the table, else 0",
             labels=["tenant", "table"],
         )
+        exists = GaugeMetricFamily(
+            "tenant_table_exists",
+            "0 if the catalog has no such table yet (its job has not run), else 1",
+            labels=["tenant", "table"],
+        )
         lag = GaugeMetricFamily(
             "tenant_table_lag_records",
             "Topic records minus table records; negative means the table holds more than the topic ever had",
@@ -156,6 +164,7 @@ class Collector:
         seen_topics = set()
         for s in self.samples:
             observed.add_metric([s.tenant, s.table], 1 if s.observed else 0)
+            exists.add_metric([s.tenant, s.table], 1 if s.exists else 0)
             if s.commit_timestamp is not None:
                 commit.add_metric([s.tenant, s.table], s.commit_timestamp)
             if s.records is not None:
@@ -165,7 +174,7 @@ class Collector:
             if s.topic and s.topic_records is not None and (s.tenant, s.topic) not in seen_topics:
                 seen_topics.add((s.tenant, s.topic))
                 topic.add_metric([s.tenant, s.topic], s.topic_records)
-        yield from (observed, commit, records, lag, topic)
+        yield from (observed, exists, commit, records, lag, topic)
 
 
 # ------------------------------------------------------------------ sources

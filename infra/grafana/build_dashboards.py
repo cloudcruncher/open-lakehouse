@@ -678,7 +678,8 @@ def tenants_dashboard():
             ),
             stat(
                 "Tables the platform cannot read",
-                "count(tenant_table_observed == 0) or vector(0)",
+                # A table whose job has not run yet does not exist: that is not a read failure.
+                "count((tenant_table_observed == 0) unless on(tenant, table) (tenant_table_exists == 0)) or vector(0)",
                 "none",
                 6,
                 1,

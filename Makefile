@@ -36,6 +36,7 @@ up: secrets ## Start the platform (idempotent: safe to re-run at any time)
 	$(COMPOSE) up -d --build --wait
 	$(if $(filter streaming,$(PROFILES)),$(COMPOSE) run --rm tenant-reconcile)
 	$(if $(and $(filter tenants,$(PROFILES)),$(filter orchestration,$(PROFILES))),$(COMPOSE) --profile tenant-code up -d --wait)
+	$(if $(filter bi,$(PROFILES)),@scripts/catalog-sync.sh)
 	@$(MAKE) --no-print-directory urls
 
 seed: ## Load synthetic core-banking data (no-op if already loaded)
@@ -79,6 +80,9 @@ tenants: ## Validate tenant onboarding files (tenants/*.yaml, ADR 14)
 
 tenants-apply: ## Reconcile tenant files into Kafka, Polaris and Keycloak (runs on `make up` too)
 	$(COMPOSE) run --rm tenant-reconcile
+
+catalog-sync: ## Copy each deployed tenant's contracts out of its image for the data product catalog
+	@scripts/catalog-sync.sh
 
 tenant-secret: ## Store a tenant's secret from an env file, never printed: make tenant-secret TENANT=markets-data NAME=shadowtraffic FILE=~/license.env
 	@COMPOSE="$(COMPOSE)" uv run --quiet tenants/secret.py "$(TENANT)" "$(NAME)" "$(FILE)"
@@ -130,6 +134,7 @@ urls: ## Where everything is (all bound to localhost only)
 	@echo "  Dagster (SSO, ops_admin)  http://localhost:3002"
 	@echo "  Lineage / Marquez (SSO)   http://localhost:3003"
 	@echo "  SQL workbench / Superset (SSO) http://localhost:3004"
+	@echo "  Data products (catalog)   http://localhost:3005"
 	@echo "  Prometheus                http://localhost:9090"
 	@echo "  Keycloak                  http://localhost:8280"
 	@echo "  Trino (TLS + JWT)         https://localhost:8443"
@@ -149,4 +154,4 @@ stop: ## Stop and remove only these blueprints, e.g. make stop BLUEPRINTS="bi li
 destroy: ## Stop and DELETE all data volumes (asks first)
 	@read -p "Delete ALL lakehouse data volumes? [y/N] " a && [[ $$a == y ]] && $(ALL) down -v
 
-.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts tenants tenants-apply tenants-render tenant-secret canary canary-self-service mem chaos heal test lint dashboards sql agent urls down stop destroy
+.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts tenants tenants-apply tenants-render tenant-secret catalog-sync canary canary-self-service mem chaos heal test lint dashboards sql agent urls down stop destroy
