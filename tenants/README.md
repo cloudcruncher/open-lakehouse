@@ -38,6 +38,14 @@ These names are a versioned contract: renaming one is a breaking change for ever
 | Long-running services | `services:` in the tenant file (name, image, `command`, `memoryMb`, `deploy`): producers and streams run as `tenant-<name>-<service>` with the same identity and credentials mount as the code server, on `data` and `stream` only (no `meta`: no Dagster, source or audit database). `stateVolume: true` mounts a volume at `/state` that survives restarts (streaming checkpoints); the base image from `0.3.0` creates `/state` owned by `spark` |
 | Secrets | `secrets:` in the tenant file names each slot (a vendor licence, an API key); a service lists the ones it uses and gets `<NAME>_ENV_FILE=/run/tenant-secrets/<name>.env`. The team fills a slot itself: `make tenant-secret TENANT=<name> NAME=<slot> FILE=<env file>` checks the slot is declared and the file is KEY=VALUE lines, stores it in the tenant's own folder of the secrets volume (next to `polaris.env`, so only the tenant's containers can read it), prints key names only, and restarts the services using it. Values never enter git; a service must cope with the file missing (the platform's CI has no licences) |
 
+What a tenant can do by itself, inside its own namespaces and with no platform PR: create, rename and
+drop tables and views, and write their properties. The catalog allows `DROP` with purge (Spark's
+`DROP TABLE` always purges), and the canary proves all of it in `make verify`. Not included: dropping
+a namespace, or touching another tenant's or the platform's. A shared interface for colleagues should
+be a table, not a view: a view written by Spark uses Spark's SQL dialect, which Trino refuses to read,
+and Trino only lets a platform policy create views. A Kappa replay swap is therefore two table renames
+(markets-data's `make replay-swap`).
+
 Deploying a new image is a PR here that bumps `codeLocation.image` (and sets `deploy: true` the
 first time), then `make tenants-render`: the generated `compose.yaml` block and Dagster's
 `workspace.yaml` change in the same PR, so what runs is reviewed like any other change.

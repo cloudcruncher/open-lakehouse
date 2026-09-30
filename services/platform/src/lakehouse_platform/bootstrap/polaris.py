@@ -135,6 +135,16 @@ def desired_storage_config() -> dict:
     }
 
 
+def desired_properties() -> dict:
+    return {
+        "default-base-location": f"s3://{BUCKET}/warehouse",
+        # Spark's DROP TABLE / DROP VIEW always purge. Without this a tenant could create tables
+        # and views in its namespaces but never drop them (DROP needs the privilege too, which the
+        # tenant writer role holds only inside its own namespaces).
+        "polaris.config.drop-with-purge.enabled": "true",
+    }
+
+
 def ensure_catalog(p: Polaris) -> None:
     """Create the catalog, or reconcile its storage config if it has drifted."""
     desired = desired_storage_config()
@@ -145,7 +155,7 @@ def ensure_catalog(p: Polaris) -> None:
             "name": CATALOG,
             "type": "INTERNAL",
             "readOnly": False,
-            "properties": {"default-base-location": base},
+            "properties": desired_properties(),
             "storageConfigInfo": desired,
         }})
         log.info("created catalog %s at %s", CATALOG, base)
@@ -154,11 +164,15 @@ def ensure_catalog(p: Polaris) -> None:
     current = p.call("GET", path)
     actual = current.get("storageConfigInfo", {})
     drift = {k: (actual.get(k), v) for k, v in desired.items() if actual.get(k) != v}
+    props = current.get("properties", {})
+    wanted = desired_properties()
+    drift.update({k: (props.get(k), v) for k, v in wanted.items() if props.get(k) != v})
     if not drift:
         log.info("catalog %s exists and matches desired state", CATALOG)
         return
     p.call("PUT", path, {
         "currentEntityVersion": current["entityVersion"],
+        "properties": {**props, **wanted},
         "storageConfigInfo": desired,
     })
     log.warning("catalog %s storage config reconciled: %s", CATALOG, sorted(drift))
