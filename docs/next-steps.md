@@ -111,12 +111,13 @@ table (165,729 trades, `notional` on every row, no duplicates), and gold rebuilt
 6. Then `lakehouse-ai-desk`, `lakehouse-risk-signals`, phase 2 (corebank out of this repo).
 
 Smaller, when convenient:
-- **Bronze can duplicate** (found by the new lag metric, 30 Sep 2026): a checkpoint that disagrees with the table's
-  offsets makes the bronze `toTable` append records it already holds. `markets_bronze.trades` has ~127k extra rows
-  (from a stale local checkpoint in my own test run) and `markets_bronze.card_auths` ~19.5k (one hour on 28 Sep).
-  Silver is fine (it MERGEs). `make verify` fails "no tenant table mirrors more records than its topic" until bronze
-  is repaired. Repair: keep one row per (kafka_partition, kafka_offset). Fix: write bronze with a MERGE on
-  (partition, offset) instead of an append, in a markets-data release.
+- ~~Bronze can duplicate~~ fixed 1 Oct 2026 (markets-data 0.11.0). The lag metric found it: a checkpoint that
+  disagrees with the table's offsets made the bronze `toTable` append records it already held
+  (`markets_bronze.trades` ~127k extra rows from a stale local checkpoint, `card_auths` ~19.5k). Bronze is now written
+  by a MERGE on (kafka_partition, kafka_offset), proven idempotent on a scratch copy (+1000 new, then +0 for the same
+  batch), and `make bronze-dedupe` repaired the local tables (127,677 and 19,525 rows removed, rows now equal distinct
+  keys). Still to prove: the MERGE's cost on a continuous full-scale stack, and the write path on a from-zero stack
+  with a deliberately stale checkpoint.
 - Tenant self-service gaps found on 30 Sep 2026 (a tenant should need no platform help): (a) a tenant cannot
   query through Trino as itself (no Keycloak identity), so its own checks use Spark; (b) Trino refuses Spark-dialect
   views and OPA denies view creation, so tenants share tables, not views; (c) a tenant cannot stop or restart
