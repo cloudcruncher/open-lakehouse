@@ -106,8 +106,8 @@ table (165,729 trades, `notional` on every row, no duplicates), and gold rebuilt
    who sees what per persona. Tenants ship contracts in their image at `/contracts` (`make catalog-sync`). Its first
    finding was a real bug: gold VWAP fell outside [low, high] for single-price minutes (decimal precision in
    `price * size`); fixed in markets-data with a failing sample first, backfilled with `GOLD_REBUILD_DAYS`.
-   Until markets-data 0.10.0 is deployed the platform's hourly gold run still uses the old SQL, so `make verify`
-   shows "a gold product check is failing". No login on the catalog yet (metadata only).
+   markets-data 0.10.0 ships the contracts and the VWAP fix; the platform deploys it with this change, so the
+   hourly gold run uses the new SQL. No login on the catalog yet (metadata only).
 6. Then `lakehouse-ai-desk`, `lakehouse-risk-signals`, phase 2 (corebank out of this repo).
 
 Smaller, when convenient:
