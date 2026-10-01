@@ -46,20 +46,20 @@ secrets:
   - name: shadowtraffic
     description: ShadowTraffic licence (env file from shadowtraffic.io) for the card-authorisation generator.
 codeLocation:
-  image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.10.0
+  image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.11.0
   module: markets_data.definitions
-  deploy: true    # v0.10.0 published by lakehouse-markets-data (signed, public)
+  deploy: true    # v0.11.0 published by lakehouse-markets-data (signed, public)
   memoryMb: 1024   # idles well below this; frees room for the card-auths stream
 services:
   - name: coinbase-feed
     description: Coinbase public trades (no key) to markets.coinbase.trades, keyed by product.
-    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.10.0
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.11.0
     command: ["python3", "-m", "markets_data.coinbase"]
     memoryMb: 128   # measured 19 MiB at ~7 trades/s
     deploy: true
   - name: streams
     description: Both Kappa streams in one Spark app, trades and card authorisations to markets bronze and silver; card rejects to the .dlq topic. A catch-up every 5 minutes at laptop scale, always on at full.
-    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.10.0
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.11.0
     command: ["python3", "-m", "markets_data.submit", "streams.py"]
     memoryMb: 1536   # one Spark driver (768m heap) for four queries; at laptop scale only during a catch-up
     stateVolume: true   # streaming checkpoints
