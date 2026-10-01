@@ -186,12 +186,27 @@ if running prometheus; then
     prom() { curl -fsS localhost:9090/api/v1/query --data-urlencode "query=$1" | python3 -c 'import sys,json; r=json.load(sys.stdin)["data"]["result"]; print(r[0]["value"][1] if r else "none")'; }
     # tenant-metrics refreshes every 30 s and Prometheus scrapes every 15 s: allow the first round.
     for _ in $(seq 1 20); do seen=$(prom 'count(tenant_table_observed == 1)'); [[ "$seen" != none ]] && break; sleep 3; done
-    unseen=$(prom 'count(tenant_table_observed == 0) or vector(0)')
-    [[ "$seen" != none && "$unseen" == 0 ]] && ok "platform observes every table tenants declare under observe: ($seen)" || bad "platform observes every declared table" "seen=$seen unreadable=$unseen"
+    # A declared table whose job has not run yet (gold, reference data on a fresh stack) does not exist:
+    # that is not a read failure. Only tables that exist and cannot be read count.
+    unseen=$(prom 'count((tenant_table_observed == 0) unless on(tenant, table) (tenant_table_exists == 0)) or vector(0)')
+    [[ "$seen" != none && "$unseen" == 0 ]] && ok "platform reads every declared table that exists ($seen observed)" || bad "platform reads every declared table that exists" "observed=$seen unreadable=$unseen"
     dup=$(prom 'count(tenant_table_lag_records < 0) or vector(0)')
     [[ "$dup" == 0 ]] && ok "no tenant table mirrors more records than its topic holds (no duplicates)" || bad "no tenant table holds duplicates" "$dup table(s) hold more records than their topic"
     n=$(curl -fsS -u "admin:$gpw" "localhost:3001/api/search?query=Tenant%20streams" | python3 -c 'import sys,json; print(len(json.load(sys.stdin)))')
     (( n >= 1 )) && ok "Grafana: Tenant streams dashboard provisioned" || bad "Grafana: Tenant streams dashboard provisioned" "$n"
+  fi
+  if running catalog; then
+    # Tenant-owned gold products, as the catalog sees them (contracts + live freshness + Dagster checks).
+    gold() { curl -fsS localhost:3005/api/products.json | python3 -c "
+import sys, json
+rows = [r for r in json.load(sys.stdin) if r['layer'] == 'gold' and r['has_owner']]
+$1"; }
+    out=$(gold 'print(len(rows) or "none", [r["key"] for r in rows if r["freshness"]["promise_seconds"] is None or not r["declared_checks"]])')
+    [[ "$out" == "none"* || "$out" == *"['"* ]] && bad "catalog: every gold product has a freshness promise and declared checks" "$out" || ok "catalog: every tenant gold product has an owner, a freshness promise and declared checks (${out%% *})"
+    late=$(gold 'print([r["key"] for r in rows if r["freshness"]["state"] in ("late", "stale")])')
+    [[ "$late" == "[]" ]] && ok "catalog: no gold product is late or stale against its promise" || bad "catalog: no gold product is late or stale" "$late"
+    failing=$(gold 'print([r["key"] + "." + n for r in rows for n, s in r["checks"].items() if s == "FAILED"])')
+    [[ "$failing" == "[]" ]] && ok "catalog: no quality check on a gold product is failing in Dagster" || bad "catalog: a gold product check is failing" "$failing"
   fi
   code=$(curl -s -o /dev/null -w '%{http_code}' localhost:3002/)
   [[ "$code" == 302 || "$code" == 403 ]] && ok "Dagster UI requires SSO (HTTP $code without a session)" || bad "Dagster UI requires SSO" "HTTP $code"

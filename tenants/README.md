@@ -34,6 +34,7 @@ These names are a versioned contract: renaming one is a breaking change for ever
 | Code server | `dagster code-server` on port 4000, module from `codeLocation.module`; the platform runs it as `tenant-<name>-code` once `codeLocation.deploy: true` |
 | Credentials | `/run/tenant-secrets/polaris.env` (`POLARIS_CLIENT_ID`, `POLARIS_CLIENT_SECRET`); the mount holds this tenant's folder only (`POLARIS_ENV_FILE` points at it) |
 | Other environment | `TENANT`, `KAFKA_BOOTSTRAP=kafka:9092`, `OPENLINEAGE_URL=http://marquez:5000`, `AWS_REGION` |
+| Contracts in the image | `/contracts/*.odcs.yaml`: the team's data contracts, copied there by its Dockerfile. The platform's catalog reads them from the image it runs (`make catalog-sync`), so a product page shows what that release was built and checked with. Standard ODCS fields carry the product information: `description.purpose/usage/limitations`, `dataGranularityDescription`, `slaProperties` (`freshness` per table), `quality` (names matching the Dagster asset checks), `customProperties` `upstream`, `authoritativeDefinitions` `transformationImplementation`, and per-column `description`, `classification`, `tags` |
 | Contracts check | `uses: cloudcruncher/open-lakehouse/.github/workflows/tenant-contracts.yml@<version>` with `tenant: <name>`, `platform-ref: <version>`: ODCS schema, tables only in the tenant's namespaces, and every `pii.*` / `special_category` column masked by the platform's OPA policy (a new mask is a platform PR) |
 | Long-running services | `services:` in the tenant file (name, image, `command`, `memoryMb`, `deploy`): producers and streams run as `tenant-<name>-<service>` with the same identity and credentials mount as the code server, on `data` and `stream` only (no `meta`: no Dagster, source or audit database). `stateVolume: true` mounts a volume at `/state` that survives restarts (streaming checkpoints); the base image from `0.3.0` creates `/state` owned by `spark` |
 | Secrets | `secrets:` in the tenant file names each slot (a vendor licence, an API key); a service lists the ones it uses and gets `<NAME>_ENV_FILE=/run/tenant-secrets/<name>.env`. The team fills a slot itself: `make tenant-secret TENANT=<name> NAME=<slot> FILE=<env file>` checks the slot is declared and the file is KEY=VALUE lines, stores it in the tenant's own folder of the secrets volume (next to `polaris.env`, so only the tenant's containers can read it), prints key names only, and restarts the services using it. Values never enter git; a service must cope with the file missing (the platform's CI has no licences) |
@@ -45,6 +46,13 @@ a namespace, or touching another tenant's or the platform's. A shared interface 
 be a table, not a view: a view written by Spark uses Spark's SQL dialect, which Trino refuses to read,
 and Trino only lets a platform policy create views. A Kappa replay swap is therefore two table renames
 (markets-data's `make replay-swap`).
+
+The **catalog** (`make urls`: Data products) gives each table a page a consumer can trust before writing a
+query: what it is for and what one row means, who owns it, how it is built (upstream tables and a link to
+the code), its freshness against the promise in the contract, the latest result of each quality check, what
+every column means, and what each persona may see. Tenants write that in their contracts; the platform
+renders and measures it, so every tenant gets it the same way. No login yet (metadata only; data still goes
+through Trino as the colleague).
 
 Observability is the platform's, analytics are the tenant's. List tables under `observe:` in the tenant
 file (add `topic:` for a table that appends every record of one of your topics) and the platform watches

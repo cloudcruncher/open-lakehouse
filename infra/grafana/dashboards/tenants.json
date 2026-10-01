@@ -93,7 +93,7 @@
    "targets": [
     {
      "refId": "A",
-     "expr": "count(tenant_table_observed == 0) or vector(0)",
+     "expr": "count((tenant_table_observed == 0) unless on(tenant, table) (tenant_table_exists == 0)) or vector(0)",
      "datasource": {
       "type": "prometheus",
       "uid": "prometheus"
