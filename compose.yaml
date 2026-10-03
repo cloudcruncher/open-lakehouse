@@ -480,7 +480,7 @@ services:
   tenant-markets-data-code:
     <<: *service
     profiles: [tenant-code]   # started by `make up` after tenant-reconcile has written its credentials
-    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.11.0
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.12.0
     # Runs execute here (the default run launcher), as the tenant's own Polaris identity.
     networks: [data, meta, stream]
     depends_on:
@@ -516,7 +516,7 @@ services:
   tenant-markets-data-coinbase-feed:
     <<: *service
     profiles: [tenant-code]
-    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.11.0
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.12.0
     # Coinbase public trades (no key) to markets.coinbase.trades, keyed by product.
     networks: [data, stream]
     entrypoint: ["python3", "-m", "markets_data.coinbase"]
@@ -542,7 +542,7 @@ services:
   tenant-markets-data-streams:
     <<: *service
     profiles: [tenant-code]
-    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.11.0
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:0.12.0
     # Both Kappa streams in one Spark app, trades and card authorisations to markets bronze and silver; card rejects to the .dlq topic. A catch-up every 5 minutes at laptop scale, always on at full.
     networks: [data, stream]
     entrypoint: ["python3", "-m", "markets_data.submit", "streams.py"]
