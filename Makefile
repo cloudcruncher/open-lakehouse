@@ -98,6 +98,9 @@ catalog-sync: ## Copy each deployed tenant's contracts out of its image for the 
 tenant-secret: ## Store a tenant's secret from an env file, never printed: make tenant-secret TENANT=markets-data NAME=shadowtraffic FILE=~/license.env
 	@COMPOSE="$(COMPOSE)" uv run --quiet tenants/secret.py "$(TENANT)" "$(NAME)" "$(FILE)"
 
+tenant-restart: ## Restart a tenant's service or its code server (tenants have no Docker socket): make tenant-restart T=markets-data S=coinbase-feed (S=code for the code server)
+	@COMPOSE="$(COMPOSE)" uv run --quiet tenants/restart.py "$(T)" "$(S)"
+
 canary: ## Run the canary tenant's pipeline in its own code server, as its own identity (ADR 14)
 	$(COMPOSE) --profile tenant-code exec -T tenant-canary-code dagster asset materialize -m canary_tenant.definitions --select canary_data/people
 
@@ -169,4 +172,4 @@ stop: ## Stop and remove only these blueprints, e.g. make stop BLUEPRINTS="bi li
 destroy: ## Stop and DELETE all data volumes (asks first)
 	@read -p "Delete ALL lakehouse data volumes? [y/N] " a && [[ $$a == y ]] && $(ALL) down -v
 
-.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts tenants tenants-apply tenants-render tenant-secret catalog-sync canary canary-self-service mem chaos heal test lint dashboards sql agent urls down stop destroy
+.PHONY: help secrets up seed activity pipeline maintenance demo verify call live-demo freshness evals contracts tenants tenants-apply tenants-render tenant-secret tenant-restart catalog-sync canary canary-self-service mem chaos heal test lint dashboards sql agent urls down stop destroy
