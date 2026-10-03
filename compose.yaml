@@ -137,7 +137,7 @@ services:
 
   # --------------------------------------------------------- catalog (Polaris)
   polaris-bootstrap:
-    image: apache/polaris-admin-tool:1.7.0
+    image: apache/polaris-admin-tool:1.8.0
     restart: "no"
     logging: *logging
     networks: [meta]
