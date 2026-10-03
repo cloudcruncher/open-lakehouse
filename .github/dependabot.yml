@@ -19,4 +19,7 @@ updates:
     groups: { polaris: { patterns: ["apache/polaris", "apache/polaris-admin-tool"] } }
     # Tenant images are pinned in tenants/*.yaml and compose.yaml is rendered from it: a bump here
     # edits the generated file and fails lint. Bump the tenant file and run `make tenants-render`.
-    ignore: [{ dependency-name: "cloudcruncher/lakehouse-*" }]
+    ignore:
+      - { dependency-name: "cloudcruncher/lakehouse-*" }
+      # Major Postgres upgrades need pg_upgrade or a dump and restore, not a tag bump.
+      - { dependency-name: "postgres", update-types: ["version-update:semver-major"] }

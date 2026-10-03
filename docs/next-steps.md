@@ -141,9 +141,8 @@ Smaller, when convenient:
   doesn't see streaming `toTable` or a MERGE from a batch view); dataset clutter (Iceberg
   metadata tables such as `*.snapshots`, the same tables again under `s3://lakehouse`, the empty
   `default` namespace, the canary under `file`).
-- The platform's CDC stream likely logs OpenLineage's Iceberg metrics `ClassCastException` every
-  batch: add `spark.openlineage.vendors.iceberg.metricsReporterDisabled=true` in
-  `jobs/spark/pipelines/common.py` (as markets-data did).
+- The platform's Spark jobs now set `spark.openlineage.vendors.iceberg.metricsReporterDisabled=true`
+  (3 Oct 2026), so the OpenLineage Iceberg metrics `ClassCastException` should be gone; confirm in the CDC stream log.
 - Kafka has no authentication or ACLs: any container on the `stream` network can write any topic.
   Per-tenant Kafka principals would match what Polaris already does.
 - `make verify` checks tenant services are running, not that they produce: data checks belong in
