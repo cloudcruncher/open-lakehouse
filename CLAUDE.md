@@ -30,6 +30,14 @@ Live Call Assist. Open work is in [docs/next-steps.md](docs/next-steps.md); read
   `docker compose --profile orchestration up -d dagster-code`.
 - Data contracts (`contracts/*.odcs.yaml`) and OPA column tags must agree; `make contracts` checks it.
 
+## Claude setup (repo layer)
+Agent teams, autonomy, cost and alert rules are global (`~/.claude`); this repo adds only:
+- `contracts-reviewer` agent (contracts, OPA column tags, write-audit-publish). Use it in `/team-review`.
+- `.claude/hooks/project-checks.sh`: the task-completion gate also runs this repo's ruff rules (120 cols, E,F,B),
+  `make contracts` and `make tenants` on changed files.
+- Never read bulky or generated files: `infra/grafana/dashboards/*.json`, `services/*/uv.lock`, `*requirements.txt`,
+  `contracts/schema/*.json`, `docs/img/*`. Run the builder or the check instead. Tail `make verify`.
+
 ## Gotchas
 - Never read or print `.env` (generated secrets, Anthropic key). The demo password is in it;
   ask the user to type it into Keycloak when a browser sign-in is needed.
