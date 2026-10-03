@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make contracts)",
+      "Bash(make tenants)",
+      "Bash(make urls)",
+      "Bash(make mem)",
+      "Bash(uv run --quiet contracts/check.py)",
+      "Bash(uv run --quiet tenants/check.py)"
+    ]
+  },
+  "enabledPlugins": {
+    "swift-lsp@claude-plugins-official": false,
+    "typescript-lsp@claude-plugins-official": false
+  }
+}
