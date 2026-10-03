@@ -110,8 +110,9 @@ table (165,729 trades, `notional` on every row, no duplicates), and gold rebuilt
    hourly gold run uses the new SQL. No login on the catalog yet (metadata only).
    **Markets dashboard** done 3 Oct 2026: `uv run scripts/markets_dashboard.py [persona]` builds the "Markets & Payments
    Intelligence" Superset dashboard on gold as carol (idempotent, screenshot in `.tour/`); alice opens the same one.
-   Hourly gold confirmed running. Found: Superset step 25 (ops_admin registering silver) returns 500 because Trino
-   answers 401 to ops_admin's stored token; alice and carol are fine. Polaris 1.8.0 needs the server and admin tool
+   Hourly gold confirmed running. Superset tour step 25 (ops_admin registering silver) returned 500 in an
+   automated run, Trino answering 401 to a stored token; signing in and authorising by hand works, so treat it as a
+   stale token in the script until it recurs. Polaris 1.8.0 needs the server and admin tool
    bumped together (bootstrap exits 3 otherwise); dependabot now groups them. No security fix in 1.8.0, so deferred.
 6. Then `lakehouse-ai-desk`, `lakehouse-risk-signals`, phase 2 (corebank out of this repo).
 
