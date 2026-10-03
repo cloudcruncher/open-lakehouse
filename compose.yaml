@@ -569,7 +569,7 @@ services:
   tenant-markets-data-card-auths:
     <<: *service
     profiles: [tenant-code]
-    image: ghcr.io/cloudcruncher/lakehouse-markets-data:card-auths-0.7.0
+    image: ghcr.io/cloudcruncher/lakehouse-markets-data:card-auths-0.11.0
     # ShadowTraffic card authorisations to markets.payments.card-auths (idles without the licence).
     networks: [data, stream]
     environment:
