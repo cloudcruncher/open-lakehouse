@@ -162,7 +162,8 @@ Answers to the four self-service gaps above, in build order (each its own PR, ve
    A view runs as its owner, so one selecting a PII-tagged column would skip the masks: Trino checks this only at
    read time, where OPA refuses it for everyone, so it fails closed (`verify` proves it). Spark-dialect views stay
    unsupported.
-3. **Restart:** a platform target (`make tenant-restart T=<tenant> S=<service>`), no Docker socket for tenants.
+3. ~~**Restart**~~ done 3 Oct 2026: `make tenant-restart T=<tenant> S=<service|code>` (`tenants/restart.py`): only what the tenant
+   file declares and deploys; no Docker socket for tenants; one `verify` check.
 4. **Image bumps:** the tenant's release workflow opens the PR editing `tenants/<team>.yaml` here; platform CI
    validates and the platform merges.
 5. **Kafka per tenant** (after the above): a SCRAM user per tenant with ACLs on its own `topics:`, created by

@@ -148,6 +148,9 @@ if running kafka; then
     "$("${DC[@]}" --profile tenant-code ps -a --format '{{.Service}}={{.State}}' tenant-markets-data-card-auths \
       tenant-markets-data-coinbase-feed tenant-markets-data-streams 2>&1 | sort | tr '\n' ' ')" \
     "^tenant-markets-data-card-auths=running tenant-markets-data-coinbase-feed=running tenant-markets-data-streams=running $"
+  expect_contains "a tenant service restarts by name; one the tenant file does not declare is refused" \
+    "$( { make --no-print-directory tenant-restart T=markets-data S=coinbase-feed; make --no-print-directory tenant-restart T=markets-data S=kafka; } 2>&1 | tr '\n' ' ')" \
+    "OK   restarted tenant-markets-data-coinbase-feed.*has no service 'kafka'"
   # A tenant repo's own Compose project joins the platform's networks by name (ADR 14).
   expect_contains "a container outside this project joins open-lakehouse_data and reaches Polaris" \
     "$(docker run --rm --network open-lakehouse_data --entrypoint python open-lakehouse/platform:dev \
