@@ -595,7 +595,7 @@ services:
   cdc-connect:
     <<: *service
     profiles: [corebank]
-    image: quay.io/debezium/connect:3.6.3.Final
+    image: quay.io/debezium/connect:3.7.0.Final
     # stream: publishes to Kafka. meta: reads the source's WAL. Nothing else.
     networks: [stream, meta]
     depends_on:
