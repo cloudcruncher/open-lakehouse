@@ -1,0 +1,101 @@
+# Reusable: a tenant's release workflow calls this to open the platform PR that moves the tenant's
+# images to the new release (tenant contract step 4). It edits tenants/<tenant>.yaml, regenerates
+# what the platform renders from it, validates, and opens a PR on bump/<tenant>-<version>. It never
+# pushes to main and never merges: platform CI runs on the PR and the platform merges. In the tenant
+# repo, after the image is published:
+#
+#   jobs:
+#     bump:
+#       uses: cloudcruncher/open-lakehouse/.github/workflows/tenant-image-bump.yml@v0.2.0
+#       with:
+#         tenant: markets-data
+#         image-ref: ghcr.io/cloudcruncher/lakehouse-markets-data
+#         version: ${{ github.ref_name }}
+#       secrets:
+#         platform-token: ${{ secrets.PLATFORM_PR_TOKEN }}   # contents + pull-requests write on the platform repo
+#
+# Only `image:` lines whose ref is exactly image-ref change (codeLocation and services); other images
+# stay, and the PR body lists the changed lines. The same version again changes nothing and opens no PR.
+name: tenant-image-bump
+
+on:
+  workflow_call:
+    inputs:
+      tenant:
+        description: The tenant's name, as in the platform's tenants/<name>.yaml
+        required: true
+        type: string
+      image-ref:
+        description: Image to bump, without tag, e.g. ghcr.io/cloudcruncher/lakehouse-markets-data
+        required: true
+        type: string
+      version:
+        description: The new tag (a leading v is dropped)
+        required: true
+        type: string
+      platform-base:
+        description: Platform branch the PR targets
+        default: main
+        type: string
+    secrets:
+      platform-token:
+        description: Token that can push a branch and open a PR on the platform repo
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    name: open the platform PR
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: cloudcruncher/open-lakehouse
+          ref: ${{ inputs.platform-base }}
+          token: ${{ secrets.platform-token }}
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Bump the image lines
+        env:
+          TENANT: ${{ inputs.tenant }}
+          IMAGE_REF: ${{ inputs.image-ref }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          uv run --quiet scripts/tenant-image-bump.py --tenant "$TENANT" --image-ref "$IMAGE_REF" \
+            --version "$VERSION" --summary "$RUNNER_TEMP/pr-body.md"
+      - name: Regenerate and validate
+        run: |
+          uv run --quiet tenants/render.py
+          uv run --quiet tenants/check.py
+      - name: Open the PR
+        env:
+          GH_TOKEN: ${{ secrets.platform-token }}
+          TENANT: ${{ inputs.tenant }}
+          VERSION: ${{ inputs.version }}
+          BASE: ${{ inputs.platform-base }}
+        run: |
+          if git diff --quiet; then
+            echo "Nothing to change: $TENANT already at $VERSION, no PR."
+            exit 0
+          fi
+          v="${VERSION#v}"
+          branch="bump/${TENANT}-${v}"
+          if [ -n "$(git ls-remote --heads origin "$branch")" ]; then
+            echo "Branch $branch already exists: a PR for this bump is open or was handled."
+            exit 0
+          fi
+          git config user.name "tenant-image-bump"
+          git config user.email "tenant-image-bump@users.noreply.github.com"
+          git switch -c "$branch"
+          git add -u
+          git commit -m "Bump $TENANT to $v" -m "Opened by the tenant's release workflow (tenant-image-bump)."
+          git push origin "$branch:$branch"
+          {
+            cat "$RUNNER_TEMP/pr-body.md"
+            printf '\nRegenerated `compose.yaml` and the Dagster workspace; `tenants/check.py` passes.\n'
+            printf 'Platform CI runs on this PR; the platform merges.\n'
+          } > "$RUNNER_TEMP/pr-final.md"
+          gh pr create --repo cloudcruncher/open-lakehouse --base "$BASE" --head "$branch" \
+            --title "Bump $TENANT to $v" --body-file "$RUNNER_TEMP/pr-final.md"
