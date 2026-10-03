@@ -166,8 +166,13 @@ Answers to the four self-service gaps above, in build order (each its own PR, ve
    file declares and deploys; no Docker socket for tenants; one `verify` check.
 4. **Image bumps:** the tenant's release workflow opens the PR editing `tenants/<team>.yaml` here; platform CI
    validates and the platform merges.
-5. **Kafka per tenant** (after the above): a SCRAM user per tenant with ACLs on its own `topics:`, created by
-   the reconciler; platform clients stay on a trusted listener.
+5. **Kafka per tenant** (first slice done 3 Oct 2026, additive): Kafka gains a SASL/SCRAM listener (`kafka:9094`) and the
+   standard authorizer, with the trusted PLAINTEXT listener (`9092`, anonymous = super user) unchanged for platform clients.
+   The reconciler creates a SCRAM user `tenant-<name>` (credentials in `kafka.env` in the tenant's secrets folder) and ACLs:
+   READ/WRITE/DESCRIBE on its own declared topics, READ on consumer groups prefixed `<name>-`; never wildcard or CREATE.
+   `verify` proves each tenant sees only its topics and is refused on another's. **Not enforced yet:** tenant services still
+   use 9092, and tenant containers can reach it. Cutover is a tenant release (markets-data reads `kafka.env`, sets
+   `groupIdPrefix`), then the stream network is split so tenants reach only 9094.
 Before these: a from-zero run (`make destroy`, then `make first-data T=markets-data`) to prove the first-run
 sensor, `USE=` and the Polaris 1.8.0 bootstrap on an empty machine.
 

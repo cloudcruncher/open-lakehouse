@@ -142,6 +142,9 @@ if running kafka; then
   expect_contains "tenant identity writes its own namespace, refused on silver" \
     "$("${DC[@]}" run --rm -T --entrypoint tenant-reconcile tenant-reconcile --probe 2>&1)" \
     "create in markets_bronze -> 200; create in silver -> 403"
+  expect_contains "tenants on the SASL listener see only their own topics and cannot write another's (Kafka ACLs)" \
+    "$("${DC[@]}" run --rm -T --entrypoint tenant-reconcile tenant-reconcile --probe-kafka 2>&1 | grep probe-kafka | tr '\n' ' ')" \
+    "tenant-canary: sees \['canary.events'\].*TOPIC_AUTHORIZATION_FAILED.*tenant-markets-data: sees .*TOPIC_AUTHORIZATION_FAILED"
   # Running, not producing: whether Coinbase answers is the tenant's concern, not the platform's.
   # card-auths runs without a licence too (it idles): CI has none.
   expect_contains "tenant services run from their tenant file (markets-data card-auths, coinbase-feed, streams)" \
