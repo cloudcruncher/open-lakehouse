@@ -24,7 +24,8 @@ def resolve(names: list[str]) -> tuple[list[str], list[str]]:
     tenants = {p.stem for p in ROOT.glob("*.yaml")}
     unknown = [n for n in names if n not in tenants and n not in PRESETS]
     if unknown:
-        raise SystemExit(f"unknown USE name(s): {', '.join(unknown)}. Known: {', '.join(sorted(tenants | set(PRESETS)))}")
+        known = ", ".join(sorted(tenants | set(PRESETS)))
+        raise SystemExit(f"unknown USE name(s): {', '.join(unknown)}. Known: {known}")
     blueprints: list[str] = []
     for n in names:
         wanted = PRESETS.get(n) or yaml.safe_load((ROOT / f"{n}.yaml").read_text()).get("blueprints", DEFAULT)
