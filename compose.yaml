@@ -787,7 +787,7 @@ services:
   grafana:
     <<: *service
     profiles: [observability]
-    image: grafana/grafana:13.2.2
+    image: grafana/grafana:13.2.3
     networks: [obs, edge]
     depends_on:
       prometheus: { condition: service_healthy }
