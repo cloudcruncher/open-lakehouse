@@ -47,7 +47,7 @@ services:
   # ---------------------------------------------------------------- metadata DB
   postgres:
     <<: *service
-    image: postgres:17
+    image: postgres:18
     networks: [meta]
     command: ["postgres", "-c", "wal_level=logical", "-c", "max_connections=200",
               "-c", "shared_buffers=128MB", "-c", "log_min_duration_statement=2000",
@@ -72,7 +72,7 @@ services:
     mem_limit: 512m
 
   db-migrate:
-    image: postgres:17
+    image: postgres:18
     restart: "no"
     logging: *logging
     networks: [meta]
