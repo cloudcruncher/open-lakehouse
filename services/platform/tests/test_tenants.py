@@ -9,6 +9,7 @@ import yaml
 from lakehouse_platform.bootstrap.tenants import (
     TopicSpec,
     TopicState,
+    desired_acls,
     kafka_state,
     load_tenants,
     orphan_namespaces,
@@ -121,3 +122,17 @@ def test_tenant_writer_can_create_rename_and_drop_in_its_own_namespaces():
     # Never the namespace itself: dropping it stays a platform decision.
     assert "NAMESPACE_FULL_METADATA" not in granted
     assert "CATALOG_MANAGE_CONTENT" not in granted
+
+
+def test_a_tenant_kafka_principal_gets_its_own_topics_and_group_prefix_only():
+    tenant = markets_data()
+    acls = desired_acls(tenant)
+    topics = {name for kind, name, _, _ in acls if kind == "TOPIC"}
+    assert topics == {t.name for t in tenant.topics}
+    topic_ops = {op for kind, _, _, op in acls if kind == "TOPIC"}
+    assert topic_ops == {"READ", "WRITE", "DESCRIBE", "DESCRIBE_CONFIGS"}
+    # Never a wildcard, never CREATE/DELETE/ALTER: topics are declared in the tenant file.
+    assert all(name != "*" and pattern in ("LITERAL", "PREFIXED") for _, name, pattern, _ in acls)
+    assert {op for _, _, _, op in acls}.isdisjoint({"CREATE", "DELETE", "ALTER", "ALL"})
+    assert ("GROUP", "markets-data-", "PREFIXED", "READ") in acls
+    assert tenant.kafka_user == "tenant-markets-data"

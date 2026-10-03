@@ -32,6 +32,7 @@ log = logging.getLogger("tenant-reconcile")
 
 TENANTS_DIR = Path(os.environ.get("TENANTS_DIR", "/etc/tenants"))
 KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP", "kafka:9092")
+KAFKA_BOOTSTRAP_SASL = os.environ.get("KAFKA_SASL_BOOTSTRAP", "kafka:9094")
 KEYCLOAK_URL = os.environ.get("KEYCLOAK_URL", "http://keycloak:8080")
 KEYCLOAK_REALM = os.environ.get("KEYCLOAK_REALM", "bank")
 PLATFORM_TOPIC_PREFIXES = ("corebank.", "contact-centre.")
@@ -82,6 +83,16 @@ class Tenant:
     @property
     def group(self) -> str:
         return f"tenant-{self.name}"
+
+    @property
+    def kafka_user(self) -> str:
+        """SCRAM user on the SASL listener; ACLs name it as User:<kafka_user>."""
+        return f"tenant-{self.name}"
+
+    @property
+    def kafka_group_prefix(self) -> str:
+        """Consumer groups a tenant may use on the SASL listener (e.g. Spark's groupIdPrefix)."""
+        return f"{self.name}-"
 
     @property
     def secrets_subdir(self) -> str:
@@ -236,6 +247,92 @@ async def reconcile_kafka(tenants: list[Tenant], bootstrap: str) -> tuple[int, l
         await admin.close()
 
 
+# ------------------------------------------------------------------ Kafka access (SCRAM + ACLs)
+
+KAFKA_SASL = KAFKA_BOOTSTRAP_SASL
+SCRAM_MECHANISM = "SCRAM-SHA-512"
+
+
+def desired_acls(tenant: Tenant) -> list[tuple[str, str, str, str]]:
+    """(resource type, name, pattern, operation) a tenant's principal may use: its topics and group prefix."""
+    acls = [("TOPIC", t.name, "LITERAL", op) for t in tenant.topics for op in TOPIC_OPERATIONS]
+    acls += [("GROUP", tenant.kafka_group_prefix, "PREFIXED", op) for op in GROUP_OPERATIONS]
+    return acls
+
+
+TOPIC_OPERATIONS = ("READ", "WRITE", "DESCRIBE", "DESCRIBE_CONFIGS")
+GROUP_OPERATIONS = ("READ", "DESCRIBE")
+
+
+def reconcile_kafka_access(tenants: list[Tenant], bootstrap: str) -> int:
+    """A SCRAM user per tenant (password in its own secrets folder as kafka.env) and ACLs on its own topics.
+
+    Additive: stale ACLs are not removed. The trusted listener (platform clients) is untouched.
+    """
+    import secrets as pysecrets
+
+    from confluent_kafka.admin import (
+        AclBinding,
+        AclOperation,
+        AclPermissionType,
+        AdminClient,
+        ResourcePatternType,
+        ResourceType,
+        ScramCredentialInfo,
+        ScramMechanism,
+        UserScramCredentialUpsertion,
+    )
+
+    from lakehouse_platform.bootstrap import polaris as pb
+
+    admin = AdminClient({"bootstrap.servers": bootstrap})
+    have = admin.describe_user_scram_credentials([t.kafka_user for t in tenants])
+    changes = 0
+    for tenant in tenants:
+        file = pb.SECRETS_DIR / tenant.secrets_subdir / "kafka.env"
+        stored = pb.read_env_file(file).get("KAFKA_PASSWORD")
+        try:
+            known = bool(have[tenant.kafka_user].result().scram_credential_infos)
+        except Exception:  # noqa: BLE001  (a user with no credentials yet raises; that is the "create" case)
+            known = False
+        if not (stored and known):
+            password = stored or pysecrets.token_urlsafe(32)
+            upsert = UserScramCredentialUpsertion(
+                tenant.kafka_user, ScramCredentialInfo(ScramMechanism.SCRAM_SHA_512, 8192), password.encode()
+            )
+            for future in admin.alter_user_scram_credentials([upsert]).values():
+                future.result()
+            pb.write_env_file(
+                file,
+                {
+                    "KAFKA_BOOTSTRAP": KAFKA_SASL,
+                    "KAFKA_SECURITY_PROTOCOL": "SASL_PLAINTEXT",
+                    "KAFKA_SASL_MECHANISM": SCRAM_MECHANISM,
+                    "KAFKA_USERNAME": tenant.kafka_user,
+                    "KAFKA_PASSWORD": password,
+                },
+            )
+            changes += 1
+            log.info("kafka: SCRAM user %s %s", tenant.kafka_user, "created" if not stored else "re-created")
+        bindings = [
+            AclBinding(
+                ResourceType[kind],
+                name,
+                ResourcePatternType[pattern],
+                f"User:{tenant.kafka_user}",
+                "*",
+                AclOperation[op],
+                AclPermissionType.ALLOW,
+            )
+            for kind, name, pattern, op in desired_acls(tenant)
+        ]
+        for future in admin.create_acls(bindings).values():  # idempotent: re-creating an ACL is a no-op
+            future.result()
+        names = ", ".join(t.name for t in tenant.topics) or "no topics"
+        log.info("kafka: %s may use %s", tenant.kafka_user, names)
+    return changes
+
+
 # ------------------------------------------------------------------ Polaris
 
 
@@ -362,16 +459,66 @@ def probe(tenant: Tenant) -> int:
     return 0 if own_status == 200 and platform_status == 403 else 1
 
 
+def sasl_config(tenant: Tenant) -> dict[str, Any]:
+    from lakehouse_platform.bootstrap import polaris as pb
+
+    creds = pb.read_env_file(pb.SECRETS_DIR / tenant.secrets_subdir / "kafka.env")
+    return {
+        "bootstrap.servers": creds["KAFKA_BOOTSTRAP"],
+        "security.protocol": creds["KAFKA_SECURITY_PROTOCOL"],
+        "sasl.mechanism": creds["KAFKA_SASL_MECHANISM"],
+        "sasl.username": creds["KAFKA_USERNAME"],
+        "sasl.password": creds["KAFKA_PASSWORD"],
+    }
+
+
+def visible_topics(tenant: Tenant) -> set[str]:
+    """Topics the tenant may DESCRIBE on the SASL listener (Kafka hides the rest from the metadata)."""
+    from confluent_kafka.admin import AdminClient
+
+    return set(AdminClient(sasl_config(tenant)).list_topics(timeout=10).topics)
+
+
+def refused_write(tenant: Tenant, topic: str) -> str:
+    """Try to produce to `topic` as the tenant; Kafka's error name. A refused write leaves nothing behind."""
+    from confluent_kafka import Producer
+
+    result: list[str] = []
+    producer = Producer({**sasl_config(tenant), "message.timeout.ms": 8000})
+    producer.produce(topic, b"probe", callback=lambda err, _msg: result.append(err.name() if err else "ok"))
+    producer.flush(10)
+    return result[0] if result else "timeout"
+
+
+def probe_kafka(tenants: list[Tenant]) -> int:
+    """On the SASL listener each tenant sees its own topics only, and is refused writing another tenant's.
+
+    The allowed side is checked by visibility, never by writing: a probe record would land in a real topic.
+    """
+    failures = 0
+    for tenant in tenants:
+        own = {t.name for t in tenant.topics}
+        others = sorted(t.name for o in tenants if o is not tenant for t in o.topics)
+        seen = visible_topics(tenant) - {"__consumer_offsets"}
+        refused = refused_write(tenant, others[0]) if others else "TOPIC_AUTHORIZATION_FAILED"
+        print(f"probe-kafka {tenant.kafka_user}: sees {sorted(seen)}; write {others[:1]} -> {refused}")
+        failures += not (seen == own and refused == "TOPIC_AUTHORIZATION_FAILED")
+    return failures
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
     tenants = load_tenants(TENANTS_DIR)
     if sys.argv[1:2] == ["--probe"]:
         return sum(probe(t) for t in tenants)
+    if sys.argv[1:2] == ["--probe-kafka"]:
+        return probe_kafka(tenants)
     changes = reconcile_polaris(tenants)
     changes += reconcile_keycloak(tenants)
     kafka_changes, refused = asyncio.run(reconcile_kafka(tenants, KAFKA_BOOTSTRAP))
     changes += kafka_changes
+    changes += reconcile_kafka_access(tenants, KAFKA_BOOTSTRAP)
     log.info(
         "tenants reconciled: %d tenant(s), %d change(s), %d refused", len(tenants), changes, len(refused)
     )
