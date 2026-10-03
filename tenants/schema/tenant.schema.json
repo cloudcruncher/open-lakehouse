@@ -5,10 +5,24 @@
   "description": "A team that builds on the platform from its own repo (ADR 14). The platform reconciles this file into Kafka topics, Polaris namespaces, a Keycloak group and a Dagster code location.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["apiVersion", "kind", "name", "domain", "description", "owner", "topics", "namespaces", "codeLocation"],
+  "required": [
+    "apiVersion",
+    "kind",
+    "name",
+    "domain",
+    "description",
+    "owner",
+    "topics",
+    "namespaces",
+    "codeLocation"
+  ],
   "properties": {
-    "apiVersion": { "const": "open-lakehouse/v1" },
-    "kind": { "const": "Tenant" },
+    "apiVersion": {
+      "const": "open-lakehouse/v1"
+    },
+    "kind": {
+      "const": "Tenant"
+    },
     "name": {
       "description": "Team id; the file must be tenants/<name>.yaml. The Keycloak group is tenant-<name>.",
       "type": "string",
@@ -19,15 +33,32 @@
       "type": "string",
       "pattern": "^[a-z][a-z0-9]{1,19}$"
     },
-    "description": { "type": "string", "minLength": 10, "maxLength": 300 },
+    "description": {
+      "type": "string",
+      "minLength": 10,
+      "maxLength": 300
+    },
     "owner": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["team", "email", "repo"],
+      "required": [
+        "team",
+        "email",
+        "repo"
+      ],
       "properties": {
-        "team": { "type": "string", "minLength": 3 },
-        "email": { "type": "string", "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$" },
-        "repo": { "type": "string", "pattern": "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" }
+        "team": {
+          "type": "string",
+          "minLength": 3
+        },
+        "email": {
+          "type": "string",
+          "pattern": "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+        },
+        "repo": {
+          "type": "string",
+          "pattern": "^https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+        }
       }
     },
     "topics": {
@@ -36,16 +67,39 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "partitions", "retentionHours", "description"],
+        "required": [
+          "name",
+          "partitions",
+          "retentionHours",
+          "description"
+        ],
         "properties": {
-          "name": { "type": "string", "pattern": "^[a-z][a-z0-9]*(\\.[a-z0-9_-]+)+$" },
-          "partitions": { "type": "integer", "minimum": 1, "maximum": 12 },
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(\\.[a-z0-9_-]+)+$"
+          },
+          "partitions": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12
+          },
           "retentionHours": {
             "description": "Kappa replays from Kafka, so retention bounds how far back a team can reprocess.",
-            "type": "integer", "minimum": 1, "maximum": 720
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 720
           },
-          "cleanupPolicy": { "enum": ["delete", "compact"], "default": "delete" },
-          "description": { "type": "string", "minLength": 5 }
+          "cleanupPolicy": {
+            "enum": [
+              "delete",
+              "compact"
+            ],
+            "default": "delete"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 5
+          }
         }
       }
     },
@@ -53,26 +107,40 @@
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
-      "items": { "type": "string", "pattern": "^[a-z][a-z0-9]*_[a-z0-9_]+$" }
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9]*_[a-z0-9_]+$"
+      }
     },
     "codeLocation": {
       "description": "The team's Dagster gRPC code server.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["image", "module"],
+      "required": [
+        "image",
+        "module"
+      ],
       "properties": {
         "image": {
           "description": "A pinned tag; 'latest' would let a tenant change what runs without a PR here.",
           "type": "string",
           "pattern": "^[a-z0-9./_-]+:(?!latest$)[A-Za-z0-9._-]+$"
         },
-        "module": { "type": "string", "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$" },
+        "module": {
+          "type": "string",
+          "pattern": "^[a-z_][a-z0-9_]*(\\.[a-z_][a-z0-9_]*)*$"
+        },
         "deploy": {
           "description": "Run the code server. False until the team has published its first image: provisioning comes first.",
           "type": "boolean",
           "default": false
         },
-        "memoryMb": { "type": "integer", "minimum": 512, "maximum": 4096, "default": 1536 }
+        "memoryMb": {
+          "type": "integer",
+          "minimum": 512,
+          "maximum": 4096,
+          "default": 1536
+        }
       }
     },
     "services": {
@@ -81,29 +149,57 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "description", "image", "memoryMb"],
+        "required": [
+          "name",
+          "description",
+          "image",
+          "memoryMb"
+        ],
         "properties": {
-          "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,30}$" },
-          "description": { "type": "string", "minLength": 10 },
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,30}$"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 10
+          },
           "image": {
             "description": "A pinned tag, as for codeLocation.image; usually the same image with another command.",
             "type": "string",
             "pattern": "^[a-z0-9./_-]+:(?!latest$)[A-Za-z0-9._-]+$"
           },
-          "command": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+          "command": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            }
+          },
           "memoryMb": {
             "description": "Hard limit; counts against the platform's tenant memory budget.",
-            "type": "integer", "minimum": 128, "maximum": 4096
+            "type": "integer",
+            "minimum": 128,
+            "maximum": 4096
           },
           "stateVolume": {
             "description": "A volume at /state that survives restarts, e.g. for streaming checkpoints.",
-            "type": "boolean", "default": false
+            "type": "boolean",
+            "default": false
           },
           "secrets": {
             "description": "Names from the tenant's `secrets`; each is rendered as <NAME>_ENV_FILE pointing at /run/tenant-secrets/<name>.env.",
-            "type": "array", "uniqueItems": true, "items": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,30}$" }
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{1,30}$"
+            }
           },
-          "deploy": { "type": "boolean", "default": false }
+          "deploy": {
+            "type": "boolean",
+            "default": false
+          }
         }
       }
     },
@@ -113,10 +209,19 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["name", "description"],
+        "required": [
+          "name",
+          "description"
+        ],
         "properties": {
-          "name": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,30}$" },
-          "description": { "type": "string", "minLength": 10 }
+          "name": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{1,30}$"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 10
+          }
         }
       }
     },
@@ -127,12 +232,38 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["table"],
+        "required": [
+          "table"
+        ],
         "properties": {
-          "table": { "description": "<namespace>.<table>, in one of the tenant's own namespaces.", "type": "string", "pattern": "^[a-z][a-z0-9]*_[a-z0-9_]+\\.[a-z][a-z0-9_]*$" },
-          "topic": { "description": "One of the tenant's own topics; the table must append its records one for one.", "type": "string" }
+          "table": {
+            "description": "<namespace>.<table>, in one of the tenant's own namespaces.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*_[a-z0-9_]+\\.[a-z][a-z0-9_]*$"
+          },
+          "topic": {
+            "description": "One of the tenant's own topics; the table must append its records one for one.",
+            "type": "string"
+          }
         }
       }
+    },
+    "blueprints": {
+      "type": "array",
+      "uniqueItems": true,
+      "minItems": 1,
+      "items": {
+        "enum": [
+          "streaming",
+          "orchestration",
+          "corebank",
+          "observability",
+          "lineage",
+          "bi",
+          "ai"
+        ]
+      },
+      "description": "Platform blueprints (Compose profiles) this tenant needs; `make up USE=<tenant>` starts the union. Default: streaming, orchestration."
     }
   }
 }

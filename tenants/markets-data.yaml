@@ -26,6 +26,7 @@ topics:
     retentionHours: 720
     cleanupPolicy: compact
     description: Latest FX rate per currency pair (ECB via Frankfurter).
+blueprints: [streaming, orchestration]   # no core banking, no consoles
 namespaces:
   - markets_bronze
   - markets_silver

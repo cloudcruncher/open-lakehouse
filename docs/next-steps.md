@@ -129,8 +129,8 @@ Smaller, when convenient:
   views and OPA denies view creation, so tenants share tables, not views; (c) a tenant cannot stop or restart
   its own service (cutovers need `docker compose stop` by the platform); (d) every image bump is a platform PR.
   Decide which of these the tenant contract should promise.
-- Blueprint slice 1 done (ADR 15): `corebank` is its own blueprint. Next: `blueprints:` in the tenant file,
-  per-tenant Compose profiles and `make up USE=...` (slice 2), then the time-to-first-data target (slice 3).
+- Blueprint slice 1 done (ADR 15): `corebank` is its own blueprint. Slice 2 done (3 Oct 2026): `blueprints:` in the tenant file, per-tenant profiles, `make up USE=...`.
+  Next: the time-to-first-data target (slice 3).
   `make urls` still prints every portal, running or not.
 - `make stop BLUEPRINTS=...` (29 Sep 2026) is the reverse of `make up PROFILES=...`. Dagster's queue could
   be blocked by a dead run holding its only slot; `max_runtime_seconds: 3600` and two `verify` checks now

@@ -17,6 +17,8 @@ throughput. Volumes are sized to exercise every path, not to load it. Measured 2
 
 ### Blueprints
 
+**Per use case:** `make up USE=markets-data` starts the core plus the blueprints that tenant declares (`blueprints:` in `tenants/markets-data.yaml`) and only its own services; `USE=bank` is core banking and CDC; names combine (`USE=bank markets-data`). `PROFILES=` on the command line still wins.
+
 Compose profiles are blueprints: the governed core always runs, and a team or a machine picks the
 rest. `make SCALE=laptop|full` chooses a default set and tells tenant workloads the platform's
 size (`PLATFORM_SCALE`). Any set works: `make up PROFILES="streaming orchestration bi"`; core

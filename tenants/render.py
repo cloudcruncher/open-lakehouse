@@ -118,7 +118,7 @@ def service(t: dict) -> str:
     name, loc = t["name"], t["codeLocation"]
     return f"""  tenant-{name}-code:
     <<: *service
-    profiles: [tenant-code]   # started by `make up` after tenant-reconcile has written its credentials
+    profiles: [tenant-code, tenant-{name}]   # started by `make up` after tenant-reconcile has written its credentials
     image: {loc["image"]}
     # Runs execute here (the default run launcher), as the tenant's own Polaris identity.
     networks: [data, meta, stream]
@@ -163,7 +163,7 @@ def workload(t: dict, s: dict) -> str:
     )
     return f"""  tenant-{name}-{s["name"]}:
     <<: *service
-    profiles: [tenant-code]
+    profiles: [tenant-code, tenant-{name}]
     image: {s["image"]}
     # {s["description"]}
     networks: [data, stream]

@@ -53,7 +53,7 @@ def test_deployed_tenant_gets_a_location_and_a_code_server():
     svc = code_server(t)
     assert svc["image"] == GOOD["codeLocation"]["image"]
     assert svc["entrypoint"][-1] == "markets_data.definitions"
-    assert svc["profiles"] == ["tenant-code"]
+    assert svc["profiles"] == ["tenant-code", "tenant-markets-data"]
     assert svc["mem_limit"] == "1024m"
 
 
