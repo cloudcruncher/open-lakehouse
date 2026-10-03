@@ -136,6 +136,20 @@
         "purpose": "metrics scraping",
         "read_system_information": true
       }
+    },
+    "tenants": {
+      "service-account-tenant-canary": {
+        "schemas": [
+          "canary_data"
+        ]
+      },
+      "service-account-tenant-markets-data": {
+        "schemas": [
+          "markets_bronze",
+          "markets_silver",
+          "markets_gold"
+        ]
+      }
     }
   }
 }

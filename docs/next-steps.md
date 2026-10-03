@@ -151,10 +151,17 @@ Smaller, when convenient:
 
 ## Tenant contract: decided 3 Oct 2026, to build
 Answers to the four self-service gaps above, in build order (each its own PR, verified locally):
-1. **A Trino identity per tenant:** the reconciler creates a Keycloak client per tenant; OPA grants it only
-   its own namespaces. Tenant data checks and dashboards then need neither Spark nor a persona.
-2. **Views:** tenants may create Trino views in their own namespaces (OPA allows view creation there, with a
-   test that it stops at the namespace edge). Spark-dialect views stay unsupported.
+1. ~~**A Trino identity per tenant**~~ done 3 Oct 2026: the reconciler creates a Keycloak client
+   `tenant-<name>` (client credentials, audience `trino`) and writes its secret to `trino.env` in the tenant's
+   secrets folder; OPA (`entitlements.tenants`, kept equal to the tenant files by a unit test) lets it read its own
+   namespaces unmasked and nothing else (no DDL, no platform or other tenants' schemas). `scripts/trino-tenant-sql.sh
+   <tenant> "<sql>"` runs as it; three `verify` checks (79 in all). Still open: a tenant repo reading its `trino.env`
+   from its code server (the folder is already mounted) and its own checks moving off Spark.
+2. ~~**Views**~~ done 3 Oct 2026 (same PR as 1): a tenant creates Trino views in its own namespaces (the reconciler
+   grants the query engine `VIEW_CREATE`/`VIEW_FULL_METADATA` there; OPA stops at the namespace edge, tested).
+   A view runs as its owner, so one selecting a PII-tagged column would skip the masks: Trino checks this only at
+   read time, where OPA refuses it for everyone, so it fails closed (`verify` proves it). Spark-dialect views stay
+   unsupported.
 3. **Restart:** a platform target (`make tenant-restart T=<tenant> S=<service>`), no Docker socket for tenants.
 4. **Image bumps:** the tenant's release workflow opens the PR editing `tenants/<team>.yaml` here; platform CI
    validates and the platform merges.

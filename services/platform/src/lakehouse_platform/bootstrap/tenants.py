@@ -55,6 +55,9 @@ TENANT_WRITER_PRIVILEGES = [
     "VIEW_READ_PROPERTIES",
 ]
 
+# Granted to the query engine on tenant namespaces only; Trino's OPA policy limits who uses them.
+TRINO_VIEW_PRIVILEGES = ["VIEW_CREATE", "VIEW_FULL_METADATA"]
+
 
 # ------------------------------------------------------------------ model
 
@@ -93,6 +96,16 @@ class Tenant:
     def kafka_group_prefix(self) -> str:
         """Consumer groups a tenant may use on the SASL listener (e.g. Spark's groupIdPrefix)."""
         return f"{self.name}-"
+
+    @property
+    def trino_client(self) -> str:
+        """Keycloak client whose service account is the tenant's Trino identity."""
+        return f"tenant-{self.name}"
+
+    @property
+    def trino_user(self) -> str:
+        """Trino's principal (preferred_username) for that service account; OPA keys on it."""
+        return f"service-account-{self.trino_client}"
 
     @property
     def secrets_subdir(self) -> str:
@@ -387,7 +400,8 @@ def reconcile_polaris(tenants: list[Tenant]) -> int:
                 pb.grant(
                     p, engine.catalog_role, {"type": "namespace", "namespace": [ns], "privilege": privilege}
                 )
-            for privilege in pb.READER_PRIVILEGES:
+            # Trino creates a tenant's views as the query engine; OPA decides who may (own namespaces only).
+            for privilege in (*pb.READER_PRIVILEGES, *TRINO_VIEW_PRIVILEGES):
                 pb.grant(
                     p, "lakehouse_reader", {"type": "namespace", "namespace": [ns], "privilege": privilege}
                 )
@@ -422,7 +436,47 @@ def reconcile_keycloak(tenants: list[Tenant]) -> int:
         )
         created += 1
         log.info("keycloak: created group %s", tenant.group)
+    created += sum(ensure_trino_identity(kc, t) for t in tenants)
     return created
+
+
+def ensure_trino_identity(kc: Any, tenant: Tenant) -> int:
+    """A client-credentials client per tenant, audience `trino`; its secret lands in the tenant's folder."""
+    from lakehouse_platform.bootstrap import polaris as pb
+    from lakehouse_platform.bootstrap.keycloak import reconcile_client
+
+    existed = bool(kc.get("/clients", clientId=tenant.trino_client))
+    reconcile_client(kc, trino_client_spec(tenant))
+    uuid = kc.get("/clients", clientId=tenant.trino_client)[0]["id"]
+    secret = kc.get(f"/clients/{uuid}/client-secret")["value"]
+    file = pb.SECRETS_DIR / tenant.secrets_subdir / "trino.env"
+    values = {"TRINO_CLIENT_ID": tenant.trino_client, "TRINO_CLIENT_SECRET": secret}
+    if pb.read_env_file(file) != values:
+        pb.write_env_file(file, values)
+    return 0 if existed else 1
+
+
+def trino_client_spec(tenant: Tenant) -> dict[str, Any]:
+    return {
+        "clientId": tenant.trino_client,
+        "name": f"Trino identity of tenant {tenant.name} (own namespaces only, see OPA)",
+        "publicClient": False,
+        "standardFlowEnabled": False,
+        "directAccessGrantsEnabled": False,
+        "serviceAccountsEnabled": True,
+        "protocolMappers": [
+            {
+                "name": "audience-trino",
+                "protocol": "openid-connect",
+                "protocolMapper": "oidc-audience-mapper",
+                "config": {
+                    "included.client.audience": "trino",
+                    "access.token.claim": "true",
+                    "id.token.claim": "false",
+                },
+            }
+        ],
+    }
 
 
 # ------------------------------------------------------------------ main

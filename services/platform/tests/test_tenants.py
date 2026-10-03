@@ -136,3 +136,13 @@ def test_a_tenant_kafka_principal_gets_its_own_topics_and_group_prefix_only():
     assert {op for _, _, _, op in acls}.isdisjoint({"CREATE", "DELETE", "ALTER", "ALL"})
     assert ("GROUP", "markets-data-", "PREFIXED", "READ") in acls
     assert tenant.kafka_user == "tenant-markets-data"
+
+
+def test_opa_lets_each_tenant_identity_read_exactly_its_namespaces():
+    import json
+
+    ents = json.loads((REPO_TENANTS.parent / "infra/opa/data/entitlements.json").read_text())["entitlements"]
+    tenants = load_tenants(REPO_TENANTS)
+    assert {t.trino_user: sorted(t.namespaces) for t in tenants} == {
+        user: sorted(e["schemas"]) for user, e in ents["tenants"].items()
+    }

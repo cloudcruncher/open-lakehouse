@@ -147,6 +147,88 @@ allow if {
 # Writes happen only through the ETL principal at the catalog layer, never via Trino.
 
 # ---------------------------------------------------------------------------
+# Tenant identities (ADR 14): a tenant's service account queries as itself and reads
+# its own namespaces, unmasked and unfiltered (it owns that data). Nothing else: no
+# platform schemas, no other tenant, no DDL (views arrive in the next step).
+# ---------------------------------------------------------------------------
+tenant := ents.tenants[user]
+
+tenant_schema(catalog, schema) if {
+	catalog == "lakehouse"
+	schema in tenant.schemas
+}
+
+tenant_schema(catalog, schema) if {
+	catalog in {"lakehouse", "system"}
+	schema == "information_schema"
+}
+
+allow if {
+	input.action.operation == "ExecuteQuery"
+	tenant
+}
+
+allow if {
+	input.action.operation in {"ViewQueryOwnedBy", "KillQueryOwnedBy", "FilterViewQueryOwnedBy"}
+	tenant
+	input.action.resource.user.user == user
+}
+
+allow if {
+	input.action.operation in {"AccessCatalog", "FilterCatalogs", "ShowSchemas"}
+	tenant
+	input.action.resource.catalog.name == "lakehouse"
+}
+
+allow if {
+	input.action.operation in {"ShowSchemas", "FilterSchemas", "ShowCreateSchema", "ShowTables"}
+	tenant
+	s := input.action.resource.schema
+	tenant_schema(s.catalogName, s.schemaName)
+}
+
+allow if {
+	input.action.operation in table_ops
+	tenant
+	t := input.action.resource.table
+	tenant_schema(t.catalogName, t.schemaName)
+}
+
+# Views, inside its own namespaces only (the policy has no rule for any other schema).
+# A view runs as its owner, so it would carry a tagged (PII) column past the masks every colleague
+# gets: a view may not select one. Share such columns through the table, which Trino masks.
+tenant_view_ops := {"CreateView", "DropView", "RenameView", "SetViewComment"}
+
+allow if {
+	input.action.operation in tenant_view_ops
+	tenant
+	t := input.action.resource.table
+	tenant_schema(t.catalogName, t.schemaName)
+	object.get(input.action, "targetResource", {"table": t}).table.schemaName in tenant.schemas
+}
+
+allow if {
+	input.action.operation == "CreateViewWithSelectFromColumns"
+	tenant
+	t := input.action.resource.table
+	tenant_schema(t.catalogName, t.schemaName)
+	count(tagged_columns(t)) == 0
+}
+
+tagged_columns(t) := {c |
+	some c in t.columns
+	ents.column_tags[table_key(t)][c]
+}
+
+batch_tenant_columns contains i if {
+	input.action.operation == "FilterColumns"
+	tenant
+	table := input.action.filterResources[0].table
+	tenant_schema(table.catalogName, table.schemaName)
+	some i, _ in table.columns
+}
+
+# ---------------------------------------------------------------------------
 # Batch endpoint: Trino sends a list of resources and gets back the allowed indices.
 # ---------------------------------------------------------------------------
 batch contains i if {
@@ -154,6 +236,8 @@ batch contains i if {
 	some i, resource in input.action.filterResources
 	allow with input.action.resource as resource
 }
+
+batch contains i if batch_tenant_columns[i]
 
 batch contains i if {
 	input.action.operation == "FilterColumns"
@@ -181,6 +265,7 @@ rowFilters contains {"expression": expr} if {
 # Unknown users get a filter that matches nothing, as a second line of defence.
 rowFilters contains {"expression": "false"} if {
 	not profile
+	not tenant
 }
 
 # ---------------------------------------------------------------------------
