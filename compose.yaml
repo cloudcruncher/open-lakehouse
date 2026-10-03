@@ -268,7 +268,7 @@ services:
   # ------------------------------------------------------------ policy (OPA)
   opa:
     <<: *service
-    image: openpolicyagent/opa:1.21.0-static
+    image: openpolicyagent/opa:1.21.1-static
     networks: [edge]
     command: ["run", "--server", "--addr=0.0.0.0:8181", "--watch",
               "--set=decision_logs.console=true", "/policies", "/data"]
