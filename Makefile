@@ -104,6 +104,10 @@ canary: ## Run the canary tenant's pipeline in its own code server, as its own i
 canary-self-service: ## The canary creates, renames and drops tables and views in its own namespace
 	$(COMPOSE) --profile tenant-code exec -T tenant-canary-code dagster asset materialize -m canary_tenant.definitions --select canary_data/self_service
 
+first-data: ## Time a tenant's stack to queryable gold, then memory: make first-data T=markets-data (ADR 15)
+	@[ -n "$(T)" ] || { echo 'usage: make first-data T=markets-data'; exit 2; }
+	@scripts/first-data.py $(T)
+
 mem: ## Memory per container against its limit, and the total against Docker's (ADR 14)
 	@scripts/mem.sh
 

@@ -130,7 +130,8 @@ Smaller, when convenient:
   its own service (cutovers need `docker compose stop` by the platform); (d) every image bump is a platform PR.
   Decide which of these the tenant contract should promise.
 - Blueprint slice 1 done (ADR 15): `corebank` is its own blueprint. Slice 2 done (3 Oct 2026): `blueprints:` in the tenant file, per-tenant profiles, `make up USE=...`.
-  Next: the time-to-first-data target (slice 3).
+  Slice 3 done: `make first-data T=markets-data` times `up` to queryable gold and prints memory
+  (script written 3 Oct 2026; a from-zero timing is still to be recorded, see the from-zero run).
   `make urls` still prints every portal, running or not.
 - `make stop BLUEPRINTS=...` (29 Sep 2026) is the reverse of `make up PROFILES=...`. Dagster's queue could
   be blocked by a dead run holding its only slot; `max_runtime_seconds: 3600` and two `verify` checks now

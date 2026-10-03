@@ -50,7 +50,7 @@ case needs serves all four.
 - **Slices, each verified locally before the next:** (1) split `corebank` out of `streaming` and
   make Dagster's platform code location cope without it (done: markets-only 4.7 GiB against 6.4 GiB, `verify` 24 of 24 without the bank and 57 of 57 with it); (2) `blueprints:` in the tenant schema,
   per-tenant profiles and `USE=` (done: `make up USE=markets-data`; `scripts/use.py`; each tenant's services carry `tenant-code` and `tenant-<name>`); (3) a time-to-first-data target that prints elapsed time and
-  container memory.
+  container memory (done: `make first-data T=<tenant>`).
 
 ## Consequences
 - The core stays always on, so a use case can never drop the governance path: identity, policy and
