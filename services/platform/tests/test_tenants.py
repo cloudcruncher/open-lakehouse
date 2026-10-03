@@ -121,3 +121,13 @@ def test_tenant_writer_can_create_rename_and_drop_in_its_own_namespaces():
     # Never the namespace itself: dropping it stays a platform decision.
     assert "NAMESPACE_FULL_METADATA" not in granted
     assert "CATALOG_MANAGE_CONTENT" not in granted
+
+
+def test_opa_lets_each_tenant_identity_read_exactly_its_namespaces():
+    import json
+
+    ents = json.loads((REPO_TENANTS.parent / "infra/opa/data/entitlements.json").read_text())["entitlements"]
+    tenants = load_tenants(REPO_TENANTS)
+    assert {t.trino_user: sorted(t.namespaces) for t in tenants} == {
+        user: sorted(e["schemas"]) for user, e in ents["tenants"].items()
+    }
