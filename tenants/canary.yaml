@@ -16,6 +16,7 @@ topics:
     retentionHours: 24
     cleanupPolicy: delete
     description: Reserved for the canary's streaming checks.
+blueprints: [streaming, orchestration]
 namespaces:
   - canary_data
 observe:

@@ -7,6 +7,17 @@ SHELL := /bin/bash
 SCALE ?= laptop
 BLUEPRINTS_laptop := streaming corebank orchestration tenants
 BLUEPRINTS_full := streaming corebank orchestration tenants observability lineage bi ai
+# USE picks a stack per use case (ADR 15): the union of the blueprints each named tenant declares
+# (tenants/<name>.yaml `blueprints:`) or the preset `bank`, e.g. `make up USE=markets-data`.
+# Only the named tenants' own code servers and services start. PROFILES on the command line wins.
+ifneq ($(USE),)
+USE_PROFILES := $(shell scripts/use.py $(USE))
+ifeq ($(USE_PROFILES),)
+$(error USE=$(USE): see the message above)
+endif
+PROFILES ?= $(USE_PROFILES)
+TENANTS := $(shell scripts/use.py --tenants $(USE))
+endif
 PROFILES ?= $(BLUEPRINTS_$(SCALE))
 export PLATFORM_SCALE := $(SCALE)
 export COREBANK_ENABLED := $(if $(filter corebank,$(PROFILES)),1,0)
@@ -35,7 +46,7 @@ secrets: ## Generate local secrets and TLS certificates (idempotent)
 up: secrets ## Start the platform (idempotent: safe to re-run at any time)
 	$(COMPOSE) up -d --build --wait
 	$(if $(filter streaming,$(PROFILES)),$(COMPOSE) run --rm tenant-reconcile)
-	$(if $(and $(filter tenants,$(PROFILES)),$(filter orchestration,$(PROFILES))),$(COMPOSE) --profile tenant-code up -d --wait)
+	$(if $(and $(filter tenants,$(PROFILES)),$(filter orchestration,$(PROFILES))),$(COMPOSE) $(if $(USE),$(addprefix --profile tenant-,$(TENANTS)),--profile tenant-code) up -d --wait)
 	$(if $(filter bi,$(PROFILES)),@scripts/catalog-sync.sh)
 	@$(MAKE) --no-print-directory urls
 
