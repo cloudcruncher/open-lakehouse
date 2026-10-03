@@ -911,7 +911,7 @@ services:
   dagster-ui:
     <<: *service
     profiles: [orchestration]
-    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.4
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
     networks: [meta, edge]
     depends_on:
       dagster-webserver: { condition: service_healthy }
@@ -981,7 +981,7 @@ services:
   lineage-sso:
     <<: *service
     profiles: [lineage]
-    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.4
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.5
     networks: [edge]
     depends_on:
       keycloak-reconcile: { condition: service_completed_successfully }
