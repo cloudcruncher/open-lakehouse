@@ -102,6 +102,27 @@ if [[ -n "$("${DC[@]}" --profile tenant-code ps -q --status running tenant-canar
   expect_contains "canary: carol (no PII) gets NULL email, initial only" "$(last "$(sql carol "$q")")" "^NULL A\.$"
   expect_contains "canary: no brand filter on tenant data (5 rows for alice)" \
     "$(last "$(sql alice "SELECT count(*) FROM lakehouse.canary_data.people")")" "^5$"
+  # The tenant's own Trino identity (Keycloak client + OPA): its data unmasked, nothing else.
+  tq() { scripts/trino-tenant-sql.sh canary "$1" 2>&1 | grep -v ' Container '; }
+  expect_contains "canary queries Trino as itself: its own rows, unmasked" \
+    "$(last "$(tq "SELECT email FROM canary_data.people WHERE person_id = 1")")" "^ada@canary.example$"
+  expect_contains "canary's Trino identity sees only its own namespace" \
+    "$(tq "SHOW SCHEMAS" | sort | tr '\n' ' ')" "^canary_data information_schema Schema $"
+  expect_contains "canary's Trino identity is refused on a platform schema and cannot write" \
+    "$( { tq "SHOW TABLES FROM silver"; tq "CREATE TABLE canary_data.nope (a int)"; } | tr '\n' ' ')" "Cannot show tables of schema lakehouse.silver.*Cannot create table"
+  # Views (tenant contract): a tenant makes them in its own namespace; a view cannot carry a tagged
+  # column past the masks (it fails closed for every reader); nothing outside the namespace.
+  tq "CREATE OR REPLACE VIEW canary_data.v_verify_ids AS SELECT person_id FROM canary_data.people" >/dev/null
+  tq "CREATE OR REPLACE VIEW canary_data.v_verify_pii AS SELECT person_id, email FROM canary_data.people" >/dev/null
+  expect_contains "canary creates a Trino view in its namespace; a colleague (alice) reads it" \
+    "$(last "$(sql alice "SELECT count(*) FROM lakehouse.canary_data.v_verify_ids")")" "^5$"
+  expect_contains "a tenant view over a PII column fails closed: no colleague reads it unmasked (carol)" \
+    "$(last "$(sql carol "SELECT email FROM lakehouse.canary_data.v_verify_pii")")" "View owner .* cannot create view that selects from"
+  expect_contains "a tenant cannot create a view outside its namespaces, a colleague cannot create one at all" \
+    "$(tq "CREATE VIEW silver.v_nope AS SELECT 1 AS a" | tr '\n' ' ')$(last "$(sql ops_admin "CREATE VIEW lakehouse.canary_data.v_nope AS SELECT 1 AS a")")" \
+    "Cannot create view lakehouse.silver.v_nope.*Cannot create view lakehouse.canary_data.v_nope"
+  tq "DROP VIEW canary_data.v_verify_ids" >/dev/null
+  tq "DROP VIEW canary_data.v_verify_pii" >/dev/null
 fi
 
 # --live compares every contract with its running table, including core banking's.

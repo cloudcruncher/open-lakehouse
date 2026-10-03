@@ -231,3 +231,76 @@ test_canary_email_masked_by_clearance if {
 test_canary_has_no_row_filter if {
 	count(trino.rowFilters) == 0 with input as row_filter("alice", "canary_data", "people")
 }
+
+# Tenant identities: own namespaces only (ADR 14).
+tenant_select(user, schema) := select(user, schema, "t")
+
+test_tenant_reads_its_own_namespace if {
+	trino.allow with input as tenant_select("service-account-tenant-markets-data", "markets_silver")
+}
+
+test_tenant_cannot_read_a_platform_schema if {
+	not trino.allow with input as tenant_select("service-account-tenant-markets-data", "silver")
+}
+
+test_tenant_cannot_read_another_tenant if {
+	not trino.allow with input as tenant_select("service-account-tenant-markets-data", "canary_data")
+	not trino.allow with input as tenant_select("service-account-tenant-canary", "markets_gold")
+}
+
+test_tenant_can_run_queries if {
+	trino.allow with input as {"context": ctx("service-account-tenant-canary"), "action": {"operation": "ExecuteQuery"}}
+}
+
+test_tenant_cannot_run_ddl if {
+	not trino.allow with input as {"context": ctx("service-account-tenant-canary"), "action": {"operation": "CreateTable", "resource": {"table": {"catalogName": "lakehouse", "schemaName": "canary_data", "tableName": "x"}}}}
+}
+
+test_tenant_cannot_read_system_information if {
+	not trino.allow with input as {"context": ctx("service-account-tenant-canary"), "action": {"operation": "ReadSystemInformation"}}
+}
+
+test_tenant_data_is_not_filtered_or_masked if {
+	count(trino.rowFilters) == 0 with input as row_filter("service-account-tenant-canary", "canary_data", "people")
+	not mask_for(column("service-account-tenant-canary", "canary_data", "people", "email", "varchar"))
+}
+
+test_unknown_service_account_still_gets_nothing if {
+	not trino.allow with input as tenant_select("service-account-tenant-nobody", "canary_data")
+	trino.rowFilters == {{"expression": "false"}} with input as row_filter("service-account-tenant-nobody", "canary_data", "people")
+}
+
+view_select(user, schema, table, columns) := {
+	"context": ctx(user),
+	"action": {
+		"operation": "CreateViewWithSelectFromColumns",
+		"resource": {"table": {"catalogName": "lakehouse", "schemaName": schema, "tableName": table, "columns": columns}},
+	},
+}
+
+view_op(user, op, schema) := {
+	"context": ctx(user),
+	"action": {"operation": op, "resource": {"table": {"catalogName": "lakehouse", "schemaName": schema, "tableName": "v"}}},
+}
+
+test_tenant_creates_a_view_in_its_own_namespace if {
+	trino.allow with input as view_op("service-account-tenant-canary", "CreateView", "canary_data")
+	trino.allow with input as view_op("service-account-tenant-canary", "DropView", "canary_data")
+	trino.allow with input as view_select("service-account-tenant-canary", "canary_data", "people", ["person_id"])
+}
+
+test_tenant_view_stops_at_the_namespace_edge if {
+	not trino.allow with input as view_op("service-account-tenant-canary", "CreateView", "silver")
+	not trino.allow with input as view_op("service-account-tenant-canary", "CreateView", "markets_gold")
+	not trino.allow with input as view_op("service-account-tenant-canary", "DropView", "gold")
+	not trino.allow with input as view_select("service-account-tenant-canary", "silver", "customers", ["customer_id"])
+}
+
+test_tenant_view_cannot_carry_pii_past_the_masks if {
+	not trino.allow with input as view_select("service-account-tenant-canary", "canary_data", "people", ["person_id", "email"])
+}
+
+test_colleague_cannot_create_views if {
+	not trino.allow with input as view_op("alice", "CreateView", "canary_data")
+	not trino.allow with input as view_op("ops_admin", "CreateView", "markets_gold")
+}
