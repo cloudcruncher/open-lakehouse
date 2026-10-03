@@ -94,28 +94,23 @@ rest. Memory numbers for each are in [scale](scale.md#the-machine-it-runs-on-tod
 
 ## A stack per use case
 
-A stack is a list of blueprints. Today you pick it with `PROFILES`, and it already works:
-
-```
-make up                                                  # the bank demo: everything the laptop set has
-make up PROFILES="streaming orchestration tenants"        # markets only: no CDC, no bank schedules
-```
-
-Measured on a 10 GB Docker VM: the markets-only stack used 4.7 to 4.9 GiB of containers, against 6.4 GiB
-with `corebank`, and `make verify` passes on both (24 checks without the bank, 57 with it).
-
-The direction (**next**) is that a *use case* picks its own stack by name, from what its tenant file declares:
+A stack is a list of blueprints, and a use case picks its own by name:
 
 ```
 make up USE=markets-data          # core + what markets-data declared it needs. No banking, no AI.
 make up USE=bank                  # the original demo: core banking, CDC, call assist
 make up USE="bank markets-data"   # both side by side
+make first-data T=markets-data    # time it from `up` to queryable gold, then print memory
+make up                           # unchanged: the bank demo plus every tenant
+make up PROFILES="streaming orchestration tenants"   # any set by hand
 ```
 
-How a stack is chosen: each `tenants/<team>.yaml` will list its `blueprints:`. `markets-data` says
-`[streaming, orchestration]`; a future AI team says `[ai]`. Only that tenant's own code server and services start.
-Nothing runs that nobody asked for, which is also how we keep a 10 GB laptop healthy.
-The reasoning is in [ADR 15](adr/0015-blueprints-and-a-stack-per-use-case.md).
+Each `tenants/<team>.yaml` lists its `blueprints:` (`markets-data` says `[streaming, orchestration]`), and only that
+tenant's own code server and services start (each carries a `tenant-<name>` profile). Nothing runs that nobody asked
+for, which is also how we keep a 10 GB laptop healthy. Measured on a 10 GB Docker VM before `USE=`: the markets-only
+stack used 4.7 to 4.9 GiB of containers, against 6.4 GiB with `corebank`, and `make verify` passes on both
+(24 checks without the bank, 57 with it, at the time). The reasoning is in
+[ADR 15](adr/0015-blueprints-and-a-stack-per-use-case.md).
 
 ## The life of a tenant
 
@@ -152,7 +147,9 @@ flowchart LR
 ```
 
 What it shows off, beyond the data itself:
-- **Kappa-style reprocessing** (**next**, step 1.9): replay a Kafka topic into a new table version and switch readers, instead of a separate batch job.
+- **Kappa-style reprocessing:** replay a Kafka topic into a new table version, compare, and switch readers by rename, instead of a separate batch job.
+- **Runs itself:** a first-run sensor in its code location builds the reference data and gold on an empty stack, and gold then refreshes hourly.
+- **Insight on top:** the *Markets & Payments Intelligence* Superset dashboard (`scripts/markets_dashboard.py`) is built on the gold tables as the analyst, so what each colleague sees is still decided by Trino and OPA.
 - **Tenant choice at work:** on a laptop its streams run as small scheduled catch-ups; at full scale they run always on. The tenant reads `PLATFORM_SCALE` and decides.
 - **The boundary:** this data lives in its own namespaces (`markets_bronze`, `markets_silver`, `markets_gold`) and its own identity. It cannot touch core banking's tables, and the platform's checks do not need its code.
 
