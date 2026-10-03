@@ -107,7 +107,7 @@ if [[ -n "$("${DC[@]}" --profile tenant-code ps -q --status running tenant-canar
   expect_contains "canary queries Trino as itself: its own rows, unmasked" \
     "$(last "$(tq "SELECT email FROM canary_data.people WHERE person_id = 1")")" "^ada@canary.example$"
   expect_contains "canary's Trino identity sees only its own namespace" \
-    "$(tq "SHOW SCHEMAS" | sort | tr '\n' ' ')" "^canary_data information_schema Schema $"
+    "$(tq "SHOW SCHEMAS" | LC_ALL=C sort | tr '\n' ' ')" "^Schema canary_data information_schema $"
   expect_contains "canary's Trino identity is refused on a platform schema and cannot write" \
     "$( { tq "SHOW TABLES FROM silver"; tq "CREATE TABLE canary_data.nope (a int)"; } | tr '\n' ' ')" "Cannot show tables of schema lakehouse.silver.*Cannot create table"
   # Views (tenant contract): a tenant makes them in its own namespace; a view cannot carry a tagged
