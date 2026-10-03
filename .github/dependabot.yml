@@ -17,3 +17,6 @@ updates:
     schedule: { interval: weekly }
     # The admin tool writes the catalog schema: it must match the server (1.8.0's bootstrap exits 3 on 1.7.0).
     groups: { polaris: { patterns: ["apache/polaris", "apache/polaris-admin-tool"] } }
+    # Tenant images are pinned in tenants/*.yaml and compose.yaml is rendered from it: a bump here
+    # edits the generated file and fails lint. Bump the tenant file and run `make tenants-render`.
+    ignore: [{ dependency-name: "cloudcruncher/lakehouse-*" }]
