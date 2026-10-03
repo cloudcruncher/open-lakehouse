@@ -71,6 +71,7 @@ def _lineage(builder: SparkSession.Builder, app: str) -> SparkSession.Builder:
         .config("spark.openlineage.transport.url", url)
         .config("spark.openlineage.namespace", os.environ.get("OPENLINEAGE_NAMESPACE", "open-lakehouse"))
         .config("spark.openlineage.parentJobName", app)
+        .config("spark.openlineage.vendors.iceberg.metricsReporterDisabled", "true")
     )
 
 
