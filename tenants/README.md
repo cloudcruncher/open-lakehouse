@@ -68,6 +68,11 @@ Deploying a new image is a PR here that bumps `codeLocation.image` (and sets `de
 first time), then `make tenants-render`: the generated `compose.yaml` block and Dagster's
 `workspace.yaml` change in the same PR, so what runs is reviewed like any other change.
 
+Blueprints: `blueprints:` lists the platform blueprints the tenant needs (`streaming`, `orchestration`, `corebank`,
+`observability`, `lineage`, `bi`, `ai`; default `streaming, orchestration`). `make up USE=<tenant>` starts the core,
+the union of those blueprints and only that tenant's `tenant-<name>` services; `USE=bank` is the core-banking preset.
+`make first-data T=<tenant>` times that stack until the tenant's `*_gold` tables in `observe:` return rows.
+
 Memory: all deployed tenant workloads together (code servers and services, by `memoryMb`) get
 `MEMORY_BUDGET_MB` (4608, sized for a 10 GB Docker VM: the canary, and markets-data's code server, streams app and producers) in
 `tenants/render.py`; `make lint` fails over it, so the next workload is a decision in its PR. `make mem` shows use against limits per container. Tenant code

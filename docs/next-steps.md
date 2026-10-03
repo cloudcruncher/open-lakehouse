@@ -148,6 +148,20 @@ Smaller, when convenient:
 - `make verify` checks tenant services are running, not that they produce: data checks belong in
   the tenant repos (a smoke test there, with the licence as an Actions secret if ever needed).
 
+## Tenant contract: decided 3 Oct 2026, to build
+Answers to the four self-service gaps above, in build order (each its own PR, verified locally):
+1. **A Trino identity per tenant:** the reconciler creates a Keycloak client per tenant; OPA grants it only
+   its own namespaces. Tenant data checks and dashboards then need neither Spark nor a persona.
+2. **Views:** tenants may create Trino views in their own namespaces (OPA allows view creation there, with a
+   test that it stops at the namespace edge). Spark-dialect views stay unsupported.
+3. **Restart:** a platform target (`make tenant-restart T=<tenant> S=<service>`), no Docker socket for tenants.
+4. **Image bumps:** the tenant's release workflow opens the PR editing `tenants/<team>.yaml` here; platform CI
+   validates and the platform merges.
+5. **Kafka per tenant** (after the above): a SCRAM user per tenant with ACLs on its own `topics:`, created by
+   the reconciler; platform clients stay on a trusted listener.
+Before these: a from-zero run (`make destroy`, then `make first-data T=markets-data`) to prove the first-run
+sensor, `USE=` and the Polaris 1.8.0 bootstrap on an empty machine.
+
 ## Parked: the AI data engineer routine, step 4
 Done before the pivot: 1 platform health (Grafana, Dagster), 2 querying as each colleague
 (and why carol is refused silver), 3 a SQL workbench (Superset) and bronze for platform

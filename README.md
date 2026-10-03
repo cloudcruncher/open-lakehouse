@@ -23,7 +23,7 @@ lakehouse produced it: the Iceberg snapshot the answer was pinned to (and the jo
 committed it), the Trino query run as the colleague, OPA's row filter and masks for that
 colleague, and the audit row. See [Platform x-ray](docs/live-call-assist.md#platform-x-ray-how-the-lakehouse-answered).
 
-Everything below is checked by `make verify` (55 end-to-end assertions) and `make chaos`
+Everything below is checked by `make verify` (73 end-to-end assertions) and `make chaos`
 (11 components killed in turn), locally and on every push in CI. None of it is aspirational.
 
 ```mermaid
@@ -183,6 +183,16 @@ architecture that load forces (split serving from analytics, Trino Gateway, OPA 
 with signed bundles, KEDA, Kafka RF=3, partitioned transcripts), petabyte table design,
 sizing, and SLOs.
 
+## Teams build on it: tenants
+
+The platform is also a base for other teams, each in its own repo ([ADR 14](docs/adr/0014-platform-and-tenant-teams-in-separate-repos.md)).
+A team onboards with one PR (`tenants/<team>.yaml`) and the platform grants its topics, namespaces and identity;
+the first real tenant, [`lakehouse-markets-data`](https://github.com/cloudcruncher/lakehouse-markets-data),
+runs live market and card-authorisation streams through Kafka, Spark and Iceberg into gold data products and a
+Superset dashboard, without touching the bank's tables. A stack is chosen per use case
+(`make up USE=markets-data`, [ADR 15](docs/adr/0015-blueprints-and-a-stack-per-use-case.md)) and
+`make first-data T=markets-data` times it to queryable gold. See [One platform, a stack for every use case](docs/vision.md).
+
 ## Consoles (localhost only)
 
 | What | Where | Sign in |
@@ -202,10 +212,11 @@ and Superset redirect you).
 
 | Path | What |
 |---|---|
-| `compose.yaml` | Platform + profiles (`streaming`, `ops`, `jobs`): healthchecks, restart policies, memory caps, segmented networks |
+| `compose.yaml` | Platform + blueprints as profiles (`streaming`, `corebank`, `orchestration`, `observability`, `lineage`, `bi`, `ai`, `jobs`, `tenant-<name>`): healthchecks, restart policies, memory caps, segmented networks |
 | `services/platform/` | MCP gateway, Live Call Assist (+ console, evals), call simulator, reconcilers (Polaris, Keycloak, CDC), seed |
 | `jobs/spark/` | Bronze, silver (WAP), gold, CDC stream, maintenance; Dagster definitions (`orchestration/`) |
 | `services/orchestrator/` | Dagster control plane (webserver, daemon) |
+| `tenants/` | One YAML per tenant team (topics, namespaces, blueprints, code location, services), its schema, renderer and tests ([README](tenants/README.md)) |
 | `contracts/` | ODCS v3.2 data contracts + checker (schema, policy tags, live drift) |
 | `infra/` | OPA policies + tests, Keycloak realm, Trino, Postgres, Prometheus rules, Grafana dashboards-as-code, Marquez, Superset |
 | `scripts/` | `verify`, `chaos`, `healer`, freshness probe, headless call client, SQL and agent clients |
@@ -216,8 +227,9 @@ and Superset redirect you).
 
 1. **Single node everything.** Production shape and sizing are in [scale.md](docs/scale.md).
    The local stack proves *behaviour*, not *capacity*; there's no load test yet.
-2. **Kafka without SASL/mTLS** locally (on its own network segment). Production: SASL/mTLS
-   plus ACLs, RF=3.
+2. **Kafka without SASL/mTLS** locally (on its own network segment), so any container on it can write
+   any topic. Planned: a SCRAM user per tenant with ACLs on its own topics ([next steps](docs/next-steps.md)).
+   Production: SASL/mTLS plus ACLs, RF=3.
 3. **Rules-first understanding.** Without an LLM key, the assistant misses paraphrases
    (the evals report exactly which). Retrieval is BM25 over a small procedure library
    (fictional procedures, not regulatory advice). At scale it becomes hybrid retrieval.
