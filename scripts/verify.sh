@@ -12,7 +12,7 @@ bad()  { FAIL=$((FAIL + 1)); printf '  \033[31mFAIL\033[0m %s\n       %s\n' "$1"
 sql()  { scripts/trino-sql.sh "$1" "$2" 2>&1; }
 last() { tail -1 <<<"$1"; }
 agent() { uv run --quiet scripts/agent_call.py "$@" 2>&1; }
-expect_contains() { if grep -q -- "$3" <<<"$2"; then ok "$1"; else bad "$1" "got: $(head -c 200 <<<"$2")"; fi; }
+expect_contains() { if grep -q -- "$3" <<<"$2"; then ok "$1"; else bad "$1" "got: $(head -c 200 <<<"$2") ... $(tail -c 700 <<<"$2")"; fi; }
 
 echo "▸ Platform health"
 for svc in postgres rustfs polaris keycloak trino mcp-gateway; do
