@@ -50,11 +50,24 @@ checks before the next.
 6. **Metadata catalog**: DataHub in a `catalog` blueprint for the full profile only (it needs
    Elasticsearch and more memory than the laptop set has), ingesting Trino, Polaris, Airflow,
    dbt and OpenLineage. Marquez stays as the lightweight lineage option.
-7. **AWS mapping and portability**: a table of service to local equivalent (Lake Formation to
-   OPA plus Polaris, Glue catalog to Polaris, EMR to Spark, Athena to Trino, EventBridge and
-   Step Functions to Kafka and Airflow, S3 to RustFS), with LocalStack or Terraform only where
-   it runs without a paid licence (to be checked when we get there), and the Terraform gap noted
-   in memory closed for the pieces we deploy.
+7. **OpenTofu modules, one set for two worlds.** OpenTofu (the open-source Terraform fork) builds the
+   cloud blueprint: S3 buckets, IAM roles and policies, KMS, secrets, and later MSK, RDS and the
+   Polaris and Trino services. The same modules run against two targets chosen by one variable:
+   `local` points the AWS provider at a [Floci](https://github.com/floci-io/floci) container (MIT,
+   port 4566, a free LocalStack alternative covering S3, IAM, KMS, Lambda, Step Functions, MSK, RDS
+   and more), and `aws` points at the real account. `make tf-plan`, `tf-apply` and `tf-destroy` work
+   on either, so a laptop and CI can prove build and destroy at no cost. Remote state with locking and
+   workspaces for dev and prod on AWS. CI runs `tofu validate`, a policy scan of the plan, and an
+   apply and destroy against Floci; it never applies to a real account. Floci is an emulator, not AWS:
+   pin its image, check the operations our modules use, and treat real AWS as a manual, short-lived,
+   destroyed-within-the-hour check. The data plane keeps RustFS; Floci only stands in for the AWS API.
+   The tenant reconciler stays as it is. A table maps each AWS service in the job ads (Lake Formation,
+   Glue, EMR, Athena, EventBridge, Step Functions) to what we run locally or deploy.
+8. **Test layers that protect tenants.** Static and unit checks (seconds), a tenant-contract suite on
+   a minimal core and streaming stack with the canary tenant as consumer (about 5 minutes, on every
+   platform PR), the full end-to-end run on `main`, before a release tag and weekly, and a
+   release-candidate check that runs each tenant repo's smoke test against the candidate. `verify`
+   must fail on an empty stack. The end-to-end run was red from 10 Oct 2026 and is fixed first.
 
 ## Consequences
 - Dagster code, `dagster.yaml` gotchas and the Dagster Pipes reporting are retired; the Pipes
