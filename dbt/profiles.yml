@@ -1,0 +1,9 @@
+# Fast target: DuckDB in memory over the seed fixtures (CI and laptop, no Docker).
+# A `trino` target for the real Iceberg gold layer comes with the Airflow slice (ADR 16).
+lakehouse:
+  target: duckdb
+  outputs:
+    duckdb:
+      type: duckdb
+      path: ":memory:"
+      threads: 4

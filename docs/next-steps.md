@@ -308,3 +308,7 @@ re-check Haiku 4.5 against the floors before changing model.
   (`uv run scripts/portal_tour.py superset` for the workbench only).
 - [Runbooks → missing-change](runbooks.md#missing-change): trace a change through bronze,
   quarantine and pending.
+
+Slice 2 spike (14 Oct 2026): `dbt/` is a dbt project on DuckDB over seed fixtures (`crypto_ohlcv_1m`, `card_auth_daily`,
+17 checks), run by `make test`. A singular test pins the VWAP-inside-[low, high] bug; removing the clamp makes it fail.
+The `trino` target and the Airflow (Cosmos) run come with the Airflow slice.

@@ -1,0 +1,17 @@
+name: lakehouse_gold
+version: "0.1.0"
+config-version: 2
+profile: lakehouse
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+clean-targets: ["target"]
+
+models:
+  lakehouse_gold:
+    staging:
+      +materialized: view
+    gold:
+      +materialized: table

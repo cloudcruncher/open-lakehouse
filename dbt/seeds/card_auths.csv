@@ -1,0 +1,7 @@
+merchant,ts,amount_eur,decision
+Tesco,2026-10-01 08:15:00,42.10,approved
+Tesco,2026-10-01 12:30:00,18.00,approved
+Tesco,2026-10-01 18:45:00,250.00,declined
+Aeroflot,2026-10-01 10:00:00,640.00,declined
+Aeroflot,2026-10-02 10:05:00,640.00,declined
+Pret,2026-10-02 07:55:00,6.40,approved
