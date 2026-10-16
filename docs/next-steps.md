@@ -308,3 +308,9 @@ re-check Haiku 4.5 against the floors before changing model.
   (`uv run scripts/portal_tour.py superset` for the workbench only).
 - [Runbooks → missing-change](runbooks.md#missing-change): trace a change through bronze,
   quarantine and pending.
+
+## Proposed (14 Oct 2026): industry-standard toolchain
+[ADR 16](adr/0016-industry-standard-toolchain.md), from London data-engineering job ads: Airflow 3
+replaces Dagster, then dbt (gold), DuckDB (CI and a fourth engine), Flink (one job beside the
+Spark stream), Superset dashboards as code, DataHub (full profile), OpenTofu modules (local on Floci, real on AWS) and a tenant-contract test layer.
+One slice per PR, in that order.
