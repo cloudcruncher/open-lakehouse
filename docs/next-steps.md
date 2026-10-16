@@ -12,6 +12,23 @@ Then fixes: Superset asks to authorize again after a 30-minute idle (PR #12), an
 chain stays linear when tool calls land together (PR #13; the local audit log was reset
 because the old bug had forked it). `make verify`: 56/56. API spend that day: about $0.40.
 
+## ADR 16, slice 1a: Airflow beside Dagster (16 Oct 2026)
+`make up PROFILES="orchestration airflow ..."` adds Airflow 3.3.2 (api-server, scheduler with LocalExecutor,
+dag-processor; own `airflow` database in the shared Postgres; SSO on `localhost:3006` for platform admins).
+`services/airflow/dags/bank_pipelines.py` ports the bank: `bank_bronze` -> `bank_silver` -> `bank_gold_customer_360`
+(Airflow Assets; gold also every 30 minutes) and `bank_table_maintenance`, with the same retry, data-quality-halt
+(exit 3, no retry) and silver-lease rules; the pure logic is unit-tested in `services/airflow/tests`. The
+OpenLineage provider is on when the `lineage` blueprint is. All four DAGs are created **paused** while Dagster still
+runs the same jobs (two schedulers would race on silver and gold): unpause one in the UI to try it. Left for later slices: tenant DAG bundles,
+moving `verify`'s Dagster checks, SLO/freshness (Dagster freshness policy), deleting Dagster.
+Airflow review follow-ups (not done):
+- The Airflow API accepts any container on the `meta` network as admin (ALL_ADMINS), tenant code included;
+  give Airflow its own network or use the Keycloak auth manager. Dagster has the same exposure.
+- The scheduler's 2560m limit is tight when `make verify` runs `airflow dags test` during a gold run; probe the
+  scheduler health port (8974) instead of `airflow jobs check`, and measure with `make mem`.
+- The Airflow constraints file is fetched at build time without a hash.
+- Tasks have no `execution_timeout`; with one worker slot a stuck drain wait blocks every DAG.
+
 ## Resume here: phase 0, onboarding tenant teams
 From 27 Sep the stack is used as a platform for teams in their own repos
 ([ADR 14](adr/0014-platform-and-tenant-teams-in-separate-repos.md)): `lakehouse-markets-data`
