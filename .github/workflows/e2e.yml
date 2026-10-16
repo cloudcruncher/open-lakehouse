@@ -38,6 +38,8 @@ jobs:
       # Both sizes of docs/scale.md: a PR runs the laptop blueprints (what a colleague runs, and
       # quicker); main and the weekly run start every blueprint at full scale.
       SCALE: ${{ github.event_name == 'pull_request' && 'laptop' || 'full' }}
+      # confluent-kafka has no wheel for the newest CPython uv would otherwise fetch.
+      UV_PYTHON: "3.13"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
