@@ -309,6 +309,8 @@ re-check Haiku 4.5 against the floors before changing model.
 - [Runbooks → missing-change](runbooks.md#missing-change): trace a change through bronze,
   quarantine and pending.
 
-Slice 2 spike (14 Oct 2026): `dbt/` is a dbt project on DuckDB over seed fixtures (`crypto_ohlcv_1m`, `card_auth_daily`,
-17 checks), run by `make test`. A singular test pins the VWAP-inside-[low, high] bug; removing the clamp makes it fail.
-The `trino` target and the Airflow (Cosmos) run come with the Airflow slice.
+## Proposed (14 Oct 2026): industry-standard toolchain
+[ADR 16](adr/0016-industry-standard-toolchain.md), from London data-engineering job ads: Airflow 3
+replaces Dagster, then dbt (gold), DuckDB (CI and a fourth engine), Flink (one job beside the
+Spark stream), Superset dashboards as code, DataHub (full profile), OpenTofu modules (local on Floci, real on AWS) and a tenant-contract test layer.
+One slice per PR, in that order.
