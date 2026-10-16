@@ -184,6 +184,35 @@
       ]
     },
     {
+      "clientId": "airflow-ui",
+      "name": "Airflow UI via oauth2-proxy (platform admins)",
+      "publicClient": false,
+      "secret": "${AIRFLOW_UI_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3006/oauth2/callback"
+      ],
+      "webOrigins": [
+        "http://localhost:3006"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "protocolMappers": [
+        {
+          "name": "audience-airflow-ui",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "airflow-ui",
+            "access.token.claim": "true",
+            "id.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "lineage-ui",
       "name": "Lineage UI (Marquez) via oauth2-proxy",
       "publicClient": false,

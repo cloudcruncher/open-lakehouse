@@ -21,8 +21,14 @@ endif
 PROFILES ?= $(BLUEPRINTS_$(SCALE))
 export PLATFORM_SCALE := $(SCALE)
 export COREBANK_ENABLED := $(if $(filter corebank,$(PROFILES)),1,0)
+export AIRFLOW_OPENLINEAGE_DISABLED := $(if $(filter lineage,$(PROFILES)),false,true)
 ifeq ($(filter laptop full,$(SCALE)),)
 $(error SCALE=$(SCALE): expected laptop or full)
+endif
+ifneq ($(filter airflow,$(PROFILES)),)
+ifeq ($(filter orchestration,$(PROFILES)),)
+$(error the airflow blueprint is built on the dagster-code image: add orchestration to PROFILES)
+endif
 endif
 ifneq ($(filter ai observability corebank,$(PROFILES)),)
 ifeq ($(filter streaming,$(PROFILES)),)
@@ -126,12 +132,12 @@ heal: ## Run the desired-state reconciler in the foreground (Ctrl-C to stop)
 test: ## Unit tests: OPA policies + Python services
 	docker run --rm -v "$$PWD/infra/opa:/work:ro" openpolicyagent/opa:1.21.0-static test /work/policies /work/data -v
 	cd services/platform && uv run pytest -q
-	uv run --quiet --no-project --with pytest --with jsonschema --with pyyaml pytest -q tenants contracts/tests
+	uv run --quiet --no-project --with pytest --with jsonschema --with pyyaml --with apache-airflow-task-sdk==1.3.2 pytest -q tenants contracts/tests services/airflow/tests
 	uv run --quiet --no-project --with dbt-duckdb dbt build --project-dir dbt --profiles-dir dbt
 
 lint: ## Lint Python, check Rego formatting, validate alert rules and dashboards-as-code
 	cd services/platform && uvx ruff check src tests
-	uvx ruff check --line-length 120 --select E,F,B jobs/spark tenants contracts
+	uvx ruff check --line-length 120 --select E,F,B jobs/spark tenants contracts services/airflow
 	docker run --rm -v "$$PWD/infra/opa:/work:ro" openpolicyagent/opa:1.21.0-static fmt --list --fail /work/policies
 	docker run --rm --entrypoint promtool -v "$$PWD/infra/prometheus:/w:ro" prom/prometheus:v3.15.0 check rules /w/rules/slo.yml
 	uv run --quiet infra/grafana/build_dashboards.py >/dev/null && git diff --exit-code -- infra/grafana/dashboards
@@ -151,6 +157,7 @@ urls: ## Where everything is (all bound to localhost only)
 	@echo "  Live Call Assist console  http://localhost:8090   (sign in: alice / bob / carol)"
 	@echo "  Grafana (SSO)             http://localhost:3001"
 	@echo "  Dagster (SSO, ops_admin)  http://localhost:3002"
+	@echo "  Airflow (SSO, ops_admin; airflow blueprint) http://localhost:3006"
 	@echo "  Lineage / Marquez (SSO)   http://localhost:3003"
 	@echo "  SQL workbench / Superset (SSO) http://localhost:3004"
 	@echo "  Data products (catalog)   http://localhost:3005"

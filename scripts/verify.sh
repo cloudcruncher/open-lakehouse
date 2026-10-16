@@ -287,6 +287,26 @@ print(len(s), "SUCCEEDED" if set(s) == {"SUCCEEDED"} else s)' 2>&1 | tail -1)
   fi
 fi
 
+if [[ -n "$("${DC[@]}" ps -a -q airflow-scheduler 2>/dev/null)" ]]; then
+  echo "▸ Orchestration: Airflow 3 beside Dagster (ADR 16 slice 1a)"
+  running airflow-scheduler || bad "Airflow: scheduler is running" "container exists but is not running"
+fi
+if running airflow-scheduler; then
+  out=$("${DC[@]}" exec -T airflow-api-server python -c "import urllib.request; print(urllib.request.urlopen('http://localhost:8080/api/v2/monitor/health', timeout=5).read().decode())" 2>&1)
+  expect_contains "Airflow: API server, scheduler, DAG processor and metadata DB healthy" \
+    "$(python3 -c 'import json,sys; d=json.loads(sys.argv[1].splitlines()[-1]); print(",".join(k for k in ("metadatabase","scheduler","dag_processor") if d.get(k,{}).get("status")=="healthy"))' "$out" 2>&1)" \
+    "^metadatabase,scheduler,dag_processor$"
+  expect_contains "Airflow: DAGs parse with no import errors" \
+    "$("${DC[@]}" exec -T airflow-scheduler airflow dags list-import-errors 2>&1 | tail -1)" "No data found"
+  expect_contains "Airflow: the 4 bank DAGs are registered" \
+    "$("${DC[@]}" exec -T airflow-scheduler airflow dags list -o plain 2>/dev/null | grep -c '^bank_')" "^4$"
+  code=$(curl -s -o /dev/null -w '%{http_code}' localhost:3006/)
+  [[ "$code" == 302 || "$code" == 403 ]] && ok "Airflow UI requires SSO (HTTP $code without a session)" || bad "Airflow UI requires SSO" "HTTP $code"
+  # Runs the real Spark job through Airflow's task runner (table maintenance is safe on any lake).
+  out=$("${DC[@]}" exec -T airflow-scheduler airflow dags test bank_table_maintenance 2>&1)
+  expect_contains "Airflow: bank_table_maintenance run succeeds (Spark via run.sh)" "$out" "Marking run .* successful"
+fi
+
 if running marquez; then
   echo "▸ Lineage (OpenLineage -> Marquez)"
   out=$("${DC[@]}" exec -T marquez curl -fsS "localhost:5000/api/v1/lineage?nodeId=dataset:s3://lakehouse:warehouse/gold/customer_360&depth=6" 2>&1)

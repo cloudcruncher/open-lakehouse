@@ -32,6 +32,7 @@ Bring a blueprint up to look at it, then stop it, to stay inside a 10 GB VM.
 | `streaming` | Kafka and the tenant reconciler | yes | yes |
 | `corebank` | Debezium, the CDC stream and the bank's Kafka topics; Dagster's bank schedules | yes | yes |
 | `orchestration` | Dagster and its code server | yes | yes |
+| `airflow` | Airflow 3 beside Dagster ([ADR 16](adr/0016-industry-standard-toolchain.md) slice 1a); needs `orchestration` too (image is built on it) | | |
 | `tenants` | tenant code servers and services (a switch for `make up`) | yes | yes |
 | `observability` | Prometheus, Grafana, exporters | | yes |
 | `lineage` | Marquez, OpenLineage UI | | yes |
