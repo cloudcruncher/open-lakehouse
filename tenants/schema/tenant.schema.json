@@ -143,6 +143,33 @@
         }
       }
     },
+    "dagBundle": {
+      "description": "Airflow DAGs the team delivers from its own repo as a DAG bundle (ADR 16). The platform's tenant DAG processor parses them; the ref is pinned, so a change is a PR here. Tenant DAGs are created paused and are not executed yet (tenants/README.md, 'DAG bundle').",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repo",
+        "ref"
+      ],
+      "properties": {
+        "repo": {
+          "description": "HTTPS clone URL of a public repository: no credentials in the URL, no other scheme.",
+          "type": "string",
+          "pattern": "^https://(?![0-9.]+(:|/))(?=[A-Za-z0-9.-]*\\.[A-Za-z])[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5})?/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)+$"
+        },
+        "ref": {
+          "description": "A release tag (v1.2.3 or 1.2.3, optional -suffix) or a full 40-character commit SHA, never a branch: a branch would let the team change what the platform parses without a PR here.",
+          "type": "string",
+          "pattern": "^([0-9a-f]{40}|v?[0-9]+\\.[0-9]+\\.[0-9]+(-[A-Za-z0-9.]+)?)$"
+        },
+        "subdir": {
+          "description": "Folder of the repo that holds the DAG files.",
+          "type": "string",
+          "pattern": "^(?!.*\\.\\.)(?!.*//)(?!.*(^|/)\\.)(?!.*/$)[A-Za-z0-9_][A-Za-z0-9_./-]*$",
+          "default": "dags"
+        }
+      }
+    },
     "services": {
       "description": "Long-running workloads (producers, streaming jobs), run next to the code server with the same identity, on the data and Kafka networks only.",
       "type": "array",

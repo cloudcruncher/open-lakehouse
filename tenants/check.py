@@ -28,6 +28,11 @@ SCHEMA = json.loads((TENANTS / "schema/tenant.schema.json").read_text())
 # Names the platform already uses: Polaris namespaces (bootstrap/polaris.py), Kafka topic
 # prefixes (kafka-init and the CDC connector in compose.yaml), and roles it keeps for itself.
 PLATFORM_NAMESPACES = {"bronze", "silver", "gold", "ops"}
+# Tenant DAG bundles (ADR 16) are rendered but switched off: the tenant DAG processor would parse
+# third-party code holding the platform's Airflow DB login and Fernet key, on the `meta` network where
+# the Airflow API accepts any container as admin. See docs/next-steps.md, "Tenant DAG bundles:
+# blockers". Tests flip this to exercise the rendering; do not flip it in shipped code.
+TENANT_BUNDLES_ENABLED = False
 RESERVED_DOMAINS = {
     "corebank",
     "core",
@@ -54,6 +59,11 @@ def check_one(path: Path, t: dict) -> list[str]:
     name, domain = t["name"], t["domain"]
     if path.stem != name:
         errors.append(f"{path.name}: file must be named {name}.yaml")
+    if t.get("dagBundle") and not TENANT_BUNDLES_ENABLED:
+        errors.append(
+            f"{path.name}: dagBundle is not allowed yet: tenant DAG bundles are disabled until the blockers in "
+            "docs/next-steps.md ('Tenant DAG bundles: blockers') are fixed"
+        )
     if domain in RESERVED_DOMAINS:
         errors.append(f"{path.name}: domain '{domain}' is reserved by the platform")
     for topic in t["topics"]:
