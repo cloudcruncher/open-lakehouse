@@ -34,7 +34,8 @@ checks before the next.
    contracts stay). Same job: assets and schedules for the bank and tenants, the writer-lease
    and drain rules, retries, SLOs. Asset-aware scheduling uses Airflow Assets; lineage uses the
    OpenLineage provider; tenant code servers become Airflow DAG bundles. Sequence: run beside
-   Dagster, port bank pipelines, port tenants, move `verify`, then delete Dagster. Memory is
+   Dagster, port bank pipelines, port tenants, move `verify`, then delete Dagster. Status 16 Oct 2026: tenant DAG bundles are built but disabled pending security blockers
+   (docs/next-steps.md, "Tenant DAG bundles: blockers"). Memory is
    roughly neutral (api-server, scheduler, dag-processor replace webserver, daemon, code servers).
 2. **dbt** builds gold: `dbt-trino` against the Iceberg tables, run by Airflow (Cosmos). dbt
    tests complement, and do not replace, the write-audit-publish checks and ODCS contracts;

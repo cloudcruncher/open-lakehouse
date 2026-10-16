@@ -19,8 +19,23 @@ dag-processor; own `airflow` database in the shared Postgres; SSO on `localhost:
 (Airflow Assets; gold also every 30 minutes) and `bank_table_maintenance`, with the same retry, data-quality-halt
 (exit 3, no retry) and silver-lease rules; the pure logic is unit-tested in `services/airflow/tests`. The
 OpenLineage provider is on when the `lineage` blueprint is. All four DAGs are created **paused** while Dagster still
-runs the same jobs (two schedulers would race on silver and gold): unpause one in the UI to try it. Left for later slices: tenant DAG bundles,
-moving `verify`'s Dagster checks, SLO/freshness (Dagster freshness policy), deleting Dagster.
+runs the same jobs (two schedulers would race on silver and gold): unpause one in the UI to try it. Tenant DAG bundles (a tenant's `dagBundle`: pinned git repo, own DAG processor) are built but
+**disabled**: `tenants/check.py` `TENANT_BUNDLES_ENABLED = False` makes `make tenants` and `make tenants-render` refuse a
+`dagBundle` until the blockers below are fixed. Left for later slices: moving `verify`'s Dagster checks, SLO/freshness (Dagster freshness policy), deleting Dagster.
+Tenant DAG bundles: blockers (all must be fixed before `TENANT_BUNDLES_ENABLED` goes True):
+1. The tenant DAG processor holds the Airflow DB login, so tenant parse-time code can read and rewrite everything in
+   the Airflow metadata DB. Needs a dedicated limited DB role (and a DB-level guard so one tenant cannot write
+   another's or the bank's DAG rows: the cluster policy in `services/airflow/config` runs in the same process as tenant
+   code and can be monkeypatched).
+2. It also holds the Fernet key, which decrypts every Airflow connection and variable. Remove it (no secrets are needed
+   to parse).
+3. It sits on the `meta` network, where the Airflow API accepts any container as admin (ALL_ADMINS). Give it a dedicated
+   network, and fix the API auth (own network or the Keycloak auth manager).
+4. Verify live that `apache-airflow-providers-git` accepts a tag or commit SHA as `tracking_ref` (documented for branches).
+5. Verify the fail-closed policy (`<tenant>__` dag_id prefix, undeterminable tenant) against a real tenant repo.
+Low items: never run `airflow dags test` / `reserialize` in the API server or scheduler (they import tenant code next to
+secrets); only public https repos with a dotted hostname are accepted (no private repos until a credential story exists).
+
 Airflow review follow-ups (not done):
 - The Airflow API accepts any container on the `meta` network as admin (ALL_ADMINS), tenant code included;
   give Airflow its own network or use the Keycloak auth manager. Dagster has the same exposure.

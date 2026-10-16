@@ -23,6 +23,18 @@ orphan. Partitions only grow (a shrink is refused), and the tenant's Polaris ide
 platform secrets volume as `tenant_<name>.env`. Colleagues see nothing of the tenant's data until
 its contracts grant access (OPA denies by default).
 
+## DAG bundle (Airflow, ADR 16) - currently disabled
+
+`dagBundle: {repo, ref, subdir}` would deliver a team's Airflow DAGs from its own repo: the platform's
+tenant DAG processor parses them from a git checkout, and they are created paused and not executed yet.
+`repo` is a public https URL with a dotted hostname (no IP literals, no credentials); `ref` is a release tag
+or a full commit SHA, never a branch, so a change is a PR here; `subdir` (default `dags`) has no `..`, no
+hidden segments, no doubled or trailing slash. DAG ids must start with `<tenant>__`.
+
+It is **disabled**: `make tenants` and `make tenants-render` reject any `dagBundle`, because the tenant
+processor would run third-party code with the Airflow DB login and Fernet key on a network where the Airflow API
+trusts every container. See docs/next-steps.md, "Tenant DAG bundles: blockers".
+
 ## What a tenant repo builds against (the platform's published interface)
 
 These names are a versioned contract: renaming one is a breaking change for every tenant.
