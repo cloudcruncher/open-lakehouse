@@ -22,3 +22,8 @@ state.txt
 logs.txt
 site/img/
 .tour/
+
+# dbt
+dbt/target/
+dbt/logs/
+dbt/.user.yml

@@ -127,6 +127,7 @@ test: ## Unit tests: OPA policies + Python services
 	docker run --rm -v "$$PWD/infra/opa:/work:ro" openpolicyagent/opa:1.21.0-static test /work/policies /work/data -v
 	cd services/platform && uv run pytest -q
 	uv run --quiet --no-project --with pytest --with jsonschema --with pyyaml pytest -q tenants contracts/tests
+	uv run --quiet --no-project --with dbt-duckdb dbt build --project-dir dbt --profiles-dir dbt
 
 lint: ## Lint Python, check Rego formatting, validate alert rules and dashboards-as-code
 	cd services/platform && uvx ruff check src tests

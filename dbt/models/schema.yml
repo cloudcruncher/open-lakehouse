@@ -1,0 +1,32 @@
+version: 2
+
+seeds:
+  - name: trades
+    description: Synthetic fixture shaped like markets_silver.trades; the Trino target reads the real table.
+  - name: card_auths
+    description: Synthetic fixture shaped like markets_silver.card_auths.
+
+models:
+  - name: crypto_ohlcv_1m
+    description: One-minute OHLCV candles per product.
+    columns:
+      - name: bar_key
+        data_tests: [unique, not_null]
+      - name: product
+        data_tests: [not_null]
+      - name: trades
+        data_tests: [not_null]
+  - name: card_auth_daily
+    description: Card authorisations per merchant and day.
+    columns:
+      - name: day_key
+        data_tests: [unique, not_null]
+      - name: approval_rate
+        data_tests: [not_null]
+  - name: stg_card_auths
+    columns:
+      - name: decision
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [approved, declined]
