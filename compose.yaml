@@ -218,7 +218,7 @@ services:
   # ------------------------------------------------------------ identity (IdP)
   keycloak:
     <<: *service
-    image: quay.io/keycloak/keycloak:26.8.0
+    image: quay.io/keycloak/keycloak:26.8.1
     networks: [meta, edge]
     depends_on: { postgres: { condition: service_healthy } }
     command: ["start", "--import-realm"]
