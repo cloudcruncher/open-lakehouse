@@ -106,7 +106,7 @@ services:
   # ------------------------------------------------------------ object storage
   rustfs:
     <<: *service
-    image: rustfs/rustfs:1.0.0
+    image: rustfs/rustfs:1.0.1
     networks: [data]
     environment:
       RUSTFS_ACCESS_KEY: ${STORAGE_ROOT_USER:?}
