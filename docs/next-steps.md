@@ -346,3 +346,19 @@ re-check Haiku 4.5 against the floors before changing model.
 replaces Dagster, then dbt (gold), DuckDB (CI and a fourth engine), Flink (one job beside the
 Spark stream), Superset dashboards as code, DataHub (full profile), OpenTofu modules (local on Floci, real on AWS) and a tenant-contract test layer.
 One slice per PR, in that order.
+
+### DataHub feasibility (16 Oct 2026, estimates to measure, not measurements)
+The laptop (16 GB, Docker about 12) cannot run DataHub beside the full stack. Ways to make it fit:
+- **Reuse what we run.** DataHub needs Kafka and a SQL store; point it at our Kafka (4.3) and Postgres
+  (17) instead of its own, which removes the two heaviest quickstart parts.
+- **Start only what it needs:** GMS (about 1 GiB), frontend (about 512 MiB), OpenSearch with a small heap
+  (about 1 GiB, the real cost), and the actions container only if we want event-driven ingestion.
+  Estimate: 3 to 4 GiB extra. Measure with `make mem`.
+- **Run it alone.** A `catalog` blueprint with no streaming or tenants, after `make up` of core only,
+  and ingest from a snapshot. It need not be live next to Spark.
+- **Ingestion as a job, not a service:** `datahub ingest` recipes for Trino, Polaris (Iceberg REST),
+  Airflow and dbt run from a short container, so nothing stays resident.
+- **Fallback:** a cloud blueprint (OpenTofu, ADR 16 item 7) where memory is a knob, not a wall.
+Open questions: Keycloak SSO for the DataHub UI; OPA tag parity (our PII tags into DataHub glossary);
+how it surfaces inside Superset (the user wants the dictionary where consumers work).
+Order: after dbt-trino gold, so there are models and runs to ingest.
