@@ -10,7 +10,7 @@ dependencies = [
     "faker>=37",
     "httpx>=0.28",
     "jsonschema>=4.23",
-    "mcp==2.2.0",
+    "mcp==2.3.0",
     "prometheus-client>=0.26",
     "psycopg[binary]>=3.2",
     "pydantic>=2.11",
